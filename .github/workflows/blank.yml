@@ -26,12 +26,14 @@ jobs:
         # Download the latest Win64 generic ZIP
         Invoke-WebRequest -Uri https://curl.se/windows/dl-8.4.0_1/curl-8.4.0_1-win64-mingw.zip -OutFile curl.zip
         Expand-Archive -Path curl.zip -DestinationPath $env:TEMP\curl
-        # The extracted folder may have a different name; adjust accordingly
-        $extractedFolder = Get-ChildItem -Path $env:TEMP\curl | Where-Object { $_.PSIsContainer } | Select-Object -First 1
-        Move-Item "$env:TEMP\curl\$extractedFolder\bin\curl.exe" -Destination "$env:USERPROFILE\curl.exe"
+        # Move curl.exe to a directory within the PATH
+        $curlExePath = "$env:USERPROFILE\curl.exe"
+        Move-Item "$env:TEMP\curl\curl-8.4.0_1-win64-mingw\bin\curl.exe" -Destination $curlExePath
+        # Update PATH for the current session
         [Environment]::SetEnvironmentVariable("PATH", "$env:USERPROFILE;$env:PATH", [System.EnvironmentVariableTarget]::Process)
         # Verify installation
-        curl --version
+        .\curl.exe --version
+
 
 
 
