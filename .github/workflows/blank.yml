@@ -10,6 +10,12 @@ jobs:
     runs-on: [self-hosted, Windows, x64]
 
     steps:
+
+    - name: Install Chocolatey
+      run: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force; `
+        [System.Net.WebClient]::new().DownloadString('https://chocolatey.org/install.ps1') | Invoke-Expression
+    
     - name: Install Dependencies
       run: |
         choco install jq curl -y  # Use Chocolatey to install jq and curl
