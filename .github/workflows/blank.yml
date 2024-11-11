@@ -33,14 +33,40 @@ jobs:
           echo "::add-mask::$VAULT_TOKEN"
           echo "VAULT_TOKEN=${VAULT_TOKEN}" >> $GITHUB_ENV
 
+      - name: Cache Vault Data Hash
+        id: cache_hash
+        uses: actions/cache@v3
+        with:
+          path: .vault_data_hash
+          key: vault-data-hash
+  
+      - name: Check Vault for Changes
+        id: check_vault
+        run: |
+          NEW_HASH=$(vault kv get -mount="secret" -format=json my-secret | jq -r '.data')
+          if [ -f ".vault_data_hash" ]; then
+            OLD_HASH=$(cat .vault_data_hash)
+          else
+            OLD_HASH=""
+          fi
+          if [ "$NEW_HASH" != "$OLD_HASH" ]; then
+            echo "Vault data has changed."
+            echo "$NEW_HASH" > .vault_data_hash
+            echo "has_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes in Vault data."
+            echo "has_changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Fetch Secrets from Vault
         id: fetch-secrets
+        if: steps.check_vault.outputs.has_changed == 'true'
         env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
         run: |
           # Specify your secret paths
-          SECRET_PATHS=("secret/data/app/config" "secret/data/app/other")
+          SECRET_PATHS=("secret/data/myapp")
 
           # Initialize a JSON object to hold secrets
           SECRETS_JSON="{}"
