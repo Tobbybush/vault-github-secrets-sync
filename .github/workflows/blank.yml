@@ -20,26 +20,6 @@ jobs:
         # Verify installation
         jq --version
 
-    - name: Install curl
-      run: |
-        # Download the latest Win64 generic ZIP
-        Invoke-WebRequest -Uri https://curl.se/windows/dl-8.4.0_1/curl-8.4.0_1-win64-mingw.zip -OutFile curl.zip
-        Expand-Archive -Path curl.zip -DestinationPath $env:TEMP\curl
-        # The extracted folder may have a different name; adjust accordingly
-        $extractedFolder = Get-ChildItem -Path $env:TEMP\curl | Where-Object { $_.PSIsContainer } | Select-Object -First 1
-        Move-Item "$env:TEMP\curl\$extractedFolder\bin\curl.exe" -Destination "$env:USERPROFILE\curl.exe"
-        [Environment]::SetEnvironmentVariable("PATH", "$env:USERPROFILE;$env:PATH", [System.EnvironmentVariableTarget]::Process)
-    
-
-
-    - name: Install Vault CLI
-      run: |
-        # Download Vault binary
-        curl -o vault.zip https://releases.hashicorp.com/vault/latest/vault_1.15.3_windows_amd64.zip
-        Expand-Archive vault.zip -DestinationPath $env:TEMP
-        Move-Item -Path $env:TEMP\vault.exe -Destination $env:ProgramFiles\HashiCorp\Vault\
-        [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$env:ProgramFiles\HashiCorp\Vault\", [System.EnvironmentVariableTarget]::Machine)
-  
     - name: Authenticate with Vault using AppRole
       id: vault-auth
       env:
@@ -48,9 +28,9 @@ jobs:
         VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
       run: |
         # Authenticate and capture the client token
-        $VAULT_TOKEN = vault.exe write -field=token auth/approle/login role_id="$env:VAULT_ROLE_ID" secret_id="$env:VAULT_SECRET_ID"
-        echo "::add-mask::$VAULT_TOKEN"
-        echo "VAULT_TOKEN=$VAULT_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append
+        $env:VAULT_TOKEN = vault.exe write -field=token auth/approle/login role_id="$env:VAULT_ROLE_ID" secret_id="$env:VAULT_SECRET_ID"
+        echo "::add-mask::$env:VAULT_TOKEN"
+        echo "VAULT_TOKEN=$env:VAULT_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append
   
     - name: Cache Vault Data Hash
       id: cache_hash
@@ -61,6 +41,9 @@ jobs:
   
     - name: Check Vault for Changes
       id: check_vault
+      env:
+        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
       run: |
         $NEW_HASH = vault.exe kv get -mount="secret" -format=json my-secret | jq -r '.data' | ConvertTo-Json
         if (Test-Path .vault_data_hash) {
@@ -101,7 +84,7 @@ jobs:
         $REPO = $env:GITHUB_REPOSITORY -split "/"
         $OWNER = $REPO[0]
         $REPO_NAME = $REPO[1]
-        $SECRETS = (Get-Content secrets.json | ConvertFrom-Json) | ForEach-Object { $_ }
+        $SECRETS = (Get-Content secrets.json | ConvertFrom-Json)
   
         foreach ($secret in $SECRETS.PSObject.Properties) {
           $secret_name = $secret.Name
@@ -109,14 +92,32 @@ jobs:
   
           Write-Host "Updating secret: $secret_name"
   
-          $response = curl -s -H "Authorization: token $env:GH_PAT" https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key
-          $key_id = $response | jq -r '.key_id'
-          $public_key = $response | jq -r '.key'
+          # Get the public key for the repository
+          $response = Invoke-RestMethod -Headers @{ Authorization = "token $env:GH_PAT" } `
+            -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key" `
+            -UseBasicParsing
   
-          $encrypted_value = [Convert]::ToBase64String([System.Security.Cryptography.RSACryptoServiceProvider]::new().Encrypt([System.Text.Encoding]::UTF8.GetBytes($secret_value), $false))
+          $key_id = $response.key_id
+          $public_key = $response.key
   
-          curl -s -X PUT -H "Authorization: token $env:GH_PAT" `
-               -H "Content-Type: application/json" `
-               -d "{`"encrypted_value`":`"$encrypted_value`",`"key_id`":`"$key_id`"}" `
-               https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name
+          # Convert the public key from base64 to bytes
+          $publicKeyBytes = [Convert]::FromBase64String($public_key)
+  
+          # Encrypt the secret value using the public key
+          $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
+          $rsa = [System.Security.Cryptography.RSA]::Create()
+          $rsa.ImportSubjectPublicKeyInfo($publicKeyBytes, [ref]0)
+          $encryptedBytes = $rsa.Encrypt($secretBytes, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
+          $encrypted_value = [Convert]::ToBase64String($encryptedBytes)
+  
+          # Prepare the body for the API request
+          $body = @{
+            encrypted_value = $encrypted_value
+            key_id = $key_id
+          } | ConvertTo-Json
+  
+          # Update the secret
+          Invoke-RestMethod -Method Put -Headers @{ Authorization = "token $env:GH_PAT" } `
+            -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name" `
+            -ContentType "application/json" -Body $body -UseBasicParsing
         }
