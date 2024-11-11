@@ -23,9 +23,14 @@ jobs:
 
     - name: Install curl
       run: |
-        Invoke-WebRequest -Uri https://curl.se/windows/dl-7.89.0/curl-7.89.0-win64-mingw.zip -OutFile curl.zip
+        # Download the latest Windows version of curl from an updated URL
+        Invoke-WebRequest -Uri https://curl.se/windows/latest/curl.zip -OutFile curl.zip
         Expand-Archive -Path curl.zip -DestinationPath $env:TEMP\curl
-        Move-Item "$env:TEMP\curl\curl-7.89.0-win64-mingw\bin\curl.exe" -Destination C:\Windows\System32\curl.exe
+        # Move curl.exe to a location in the PATH
+        Move-Item "$env:TEMP\curl\curl-*/bin/curl.exe" -Destination "$env:USERPROFILE\curl.exe"
+        [Environment]::SetEnvironmentVariable("PATH", "$env:USERPROFILE;$env:PATH", [System.EnvironmentVariableTarget]::Process)
+        # Confirm curl installation
+        curl --version
 
     - name: Install Vault CLI
       run: |
