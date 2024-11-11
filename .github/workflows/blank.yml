@@ -31,6 +31,13 @@ jobs:
         $env:VAULT_TOKEN = vault.exe write -field=token auth/approle/login role_id="$env:VAULT_ROLE_ID" secret_id="$env:VAULT_SECRET_ID"
         echo "::add-mask::$env:VAULT_TOKEN"
         echo "VAULT_TOKEN=$env:VAULT_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Verify Vault Token
+      env:
+        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+      run: |
+        vault.exe token lookup -format=json | jq '.data'
   
     - name: Cache Vault Data Hash
       id: cache_hash
@@ -45,7 +52,8 @@ jobs:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
       run: |
-        $NEW_HASH = vault.exe kv get -format=json secret/myapp | jq -r '.data' | ConvertTo-Json
+        # For KV Version 1
+        $NEW_HASH = vault.exe kv get -format=json secret/my-secret | jq -r '.data' | ConvertTo-Json
         if (Test-Path .vault_data_hash) {
           $OLD_HASH = Get-Content .vault_data_hash
         } else {
