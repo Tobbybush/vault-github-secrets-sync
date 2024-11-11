@@ -10,15 +10,18 @@ jobs:
     runs-on: [self-hosted, Windows, x64]
 
     steps:
-
-    - name: Install Chocolatey
-      run: |
-        Set-ExecutionPolicy Bypass -Scope Process -Force; `
-        [System.Net.WebClient]::new().DownloadString('https://chocolatey.org/install.ps1') | Invoke-Expression
     
-    - name: Install Dependencies
+    - name: Install jq
       run: |
-        choco install jq curl -y  # Use Chocolatey to install jq and curl
+        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile jq.exe
+        Move-Item jq.exe -Destination C:\Windows\System32\jq.exe\
+
+    - name: Install curl
+      run: |
+        Invoke-WebRequest -Uri https://curl.se/windows/dl-7.89.0/curl-7.89.0-win64-mingw.zip -OutFile curl.zip
+        Expand-Archive -Path curl.zip -DestinationPath $env:TEMP\curl
+        Move-Item "$env:TEMP\curl\curl-7.89.0-win64-mingw\bin\curl.exe" -Destination C:\Windows\System32\curl.exe
+
     - name: Install Vault CLI
       run: |
         # Download Vault binary
