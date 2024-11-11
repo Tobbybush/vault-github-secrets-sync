@@ -13,8 +13,13 @@ jobs:
     
     - name: Install jq
       run: |
-        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile jq.exe
-        Move-Item jq.exe -Destination C:\Windows\System32\jq.exe\
+        # Download jq.exe
+        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile $env:USERPROFILE\jq.exe
+        # Add the directory to PATH for the current session
+        [Environment]::SetEnvironmentVariable("PATH", "$env:USERPROFILE;$env:PATH", [System.EnvironmentVariableTarget]::Process)
+        # Verify installation
+        jq --version
+
 
     - name: Install curl
       run: |
