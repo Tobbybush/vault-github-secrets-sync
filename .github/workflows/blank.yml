@@ -10,108 +10,94 @@ jobs:
     runs-on: [self-hosted, Windows, x64]
 
     steps:
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-
-      - name: Install Vault CLI
-        run: |
-          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-          sudo apt-get update && sudo apt-get install vault -y
-
-      - name: Authenticate with Vault using AppRole
-        id: vault-auth
-        env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
-          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
-        run: |
-          # Authenticate and capture the client token
-          VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id="$VAULT_ROLE_ID" secret_id="$VAULT_SECRET_ID")
-          echo "::add-mask::$VAULT_TOKEN"
-          echo "VAULT_TOKEN=${VAULT_TOKEN}" >> $GITHUB_ENV
-
-      - name: Cache Vault Data Hash
-        id: cache_hash
-        uses: actions/cache@v3
-        with:
-          path: .vault_data_hash
-          key: vault-data-hash
+    - name: Install Dependencies
+      run: |
+        choco install jq curl -y  # Use Chocolatey to install jq and curl
+    - name: Install Vault CLI
+      run: |
+        # Download Vault binary
+        curl -o vault.zip https://releases.hashicorp.com/vault/latest/vault_1.15.3_windows_amd64.zip
+        Expand-Archive vault.zip -DestinationPath $env:TEMP
+        Move-Item -Path $env:TEMP\vault.exe -Destination $env:ProgramFiles\HashiCorp\Vault\
+        [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;$env:ProgramFiles\HashiCorp\Vault\", [System.EnvironmentVariableTarget]::Machine)
   
-      - name: Check Vault for Changes
-        id: check_vault
-        run: |
-          NEW_HASH=$(vault kv get -mount="secret" -format=json my-secret | jq -r '.data')
-          if [ -f ".vault_data_hash" ]; then
-            OLD_HASH=$(cat .vault_data_hash)
-          else
-            OLD_HASH=""
-          fi
-          if [ "$NEW_HASH" != "$OLD_HASH" ]; then
-            echo "Vault data has changed."
-            echo "$NEW_HASH" > .vault_data_hash
-            echo "has_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No changes in Vault data."
-            echo "has_changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Fetch Secrets from Vault
-        id: fetch-secrets
-        if: steps.check_vault.outputs.has_changed == 'true'
-        env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-        run: |
-          # Specify your secret paths
-          SECRET_PATHS=("secret/data/myapp")
-
-          # Initialize a JSON object to hold secrets
-          SECRETS_JSON="{}"
-
-          for SECRET_PATH in "${SECRET_PATHS[@]}"; do
-            # Fetch the secret from Vault
-            SECRET_DATA=$(vault kv get -format=json "$SECRET_PATH")
-
-            # Extract the data
-            DATA=$(echo "$SECRET_DATA" | jq -r '.data.data')
-
-            # Merge data into SECRETS_JSON
-            SECRETS_JSON=$(echo "$SECRETS_JSON $DATA" | jq -s '.[0] * .[1]')
-          done
-
-          echo "SECRETS_JSON=$SECRETS_JSON" >> $GITHUB_ENV
-
-      - name: Update GitHub Secrets
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          SECRETS_JSON: ${{ env.SECRETS_JSON }}
-        run: |
-          # Repository details
-          OWNER=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
-          REPO=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)
-
-          # Extract secret names and values
-          echo "$SECRETS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > secrets_list.txt
-
-          # Update each secret in GitHub
-          while IFS='=' read -r secret_name secret_value; do
-            echo "Updating secret: $secret_name"
-
-            # Get the public key for the repository
-            response=$(curl -s -H "Authorization: token $GH_PAT" https://api.github.com/repos/$OWNER/$REPO/actions/secrets/public-key)
-            key_id=$(echo "$response" | jq -r .key_id)
-            key=$(echo "$response" | jq -r .key)
-
-            # Encrypt the secret using the public key
-            encrypted_value=$(echo -n "$secret_value" | openssl rsautl -encrypt -pubin -inkey <(echo "$key" | base64 -d) | base64)
-
-            # Update the secret
-            curl -s -X PUT -H "Authorization: token $GH_PAT" \
-              -H "Content-Type: application/json" \
-              -d "{\"encrypted_value\":\"$encrypted_value\",\"key_id\":\"$key_id\"}" \
-              https://api.github.com/repos/$OWNER/$REPO/actions/secrets/$secret_name
-
-          done < secrets_list.txt
+    - name: Authenticate with Vault using AppRole
+      id: vault-auth
+      env:
+        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+        VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
+      run: |
+        # Authenticate and capture the client token
+        $VAULT_TOKEN = vault.exe write -field=token auth/approle/login role_id="$env:VAULT_ROLE_ID" secret_id="$env:VAULT_SECRET_ID"
+        echo "::add-mask::$VAULT_TOKEN"
+        echo "VAULT_TOKEN=$VAULT_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append
+  
+    - name: Cache Vault Data Hash
+      id: cache_hash
+      uses: actions/cache@v3
+      with:
+        path: .vault_data_hash
+        key: vault-data-hash
+  
+    - name: Check Vault for Changes
+      id: check_vault
+      run: |
+        $NEW_HASH = vault.exe kv get -mount="secret" -format=json my-secret | jq -r '.data' | ConvertTo-Json
+        if (Test-Path .vault_data_hash) {
+          $OLD_HASH = Get-Content .vault_data_hash
+        } else {
+          $OLD_HASH = ""
+        }
+        if ($NEW_HASH -ne $OLD_HASH) {
+          Write-Host "Vault data has changed."
+          $NEW_HASH | Out-File .vault_data_hash
+          echo "has_changed=true" | Out-File $env:GITHUB_OUTPUT -Append
+        } else {
+          Write-Host "No changes in Vault data."
+          echo "has_changed=false" | Out-File $env:GITHUB_OUTPUT -Append
+        }
+  
+    - name: Fetch Secrets from Vault
+      id: fetch-secrets
+      if: steps.check_vault.outputs.has_changed == 'true'
+      env:
+        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+      run: |
+        $SECRET_PATHS = @("secret/data/myapp")
+        $SECRETS_JSON = @{}
+        foreach ($SECRET_PATH in $SECRET_PATHS) {
+          $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
+          $SECRETS_JSON += $SECRET_DATA
+        }
+        $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
+        echo "SECRETS_JSON=$(Get-Content secrets.json)" | Out-File $env:GITHUB_ENV -Append
+  
+    - name: Update GitHub Secrets
+      env:
+        GH_PAT: ${{ secrets.GH_PAT }}
+        SECRETS_JSON: ${{ env.SECRETS_JSON }}
+      run: |
+        $REPO = $env:GITHUB_REPOSITORY -split "/"
+        $OWNER = $REPO[0]
+        $REPO_NAME = $REPO[1]
+        $SECRETS = (Get-Content secrets.json | ConvertFrom-Json) | ForEach-Object { $_ }
+  
+        foreach ($secret in $SECRETS.PSObject.Properties) {
+          $secret_name = $secret.Name
+          $secret_value = $secret.Value
+  
+          Write-Host "Updating secret: $secret_name"
+  
+          $response = curl -s -H "Authorization: token $env:GH_PAT" https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key
+          $key_id = $response | jq -r '.key_id'
+          $public_key = $response | jq -r '.key'
+  
+          $encrypted_value = [Convert]::ToBase64String([System.Security.Cryptography.RSACryptoServiceProvider]::new().Encrypt([System.Text.Encoding]::UTF8.GetBytes($secret_value), $false))
+  
+          curl -s -X PUT -H "Authorization: token $env:GH_PAT" `
+               -H "Content-Type: application/json" `
+               -d "{`"encrypted_value`":`"$encrypted_value`",`"key_id`":`"$key_id`"}" `
+               https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name
+        }
