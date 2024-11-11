@@ -1,0 +1,1 @@
+# vault-github-secrets-sync
