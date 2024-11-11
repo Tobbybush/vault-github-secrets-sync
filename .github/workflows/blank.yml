@@ -1,0 +1,91 @@
+name: Update GitHub Secrets from Vault
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Runs every hour
+  workflow_dispatch:
+
+jobs:
+  update-secrets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Install Vault CLI
+        run: |
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+          sudo apt-get update && sudo apt-get install vault -y
+
+      - name: Authenticate with Vault using AppRole
+        id: vault-auth
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
+        run: |
+          # Authenticate and capture the client token
+          VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id="$VAULT_ROLE_ID" secret_id="$VAULT_SECRET_ID")
+          echo "::add-mask::$VAULT_TOKEN"
+          echo "VAULT_TOKEN=${VAULT_TOKEN}" >> $GITHUB_ENV
+
+      - name: Fetch Secrets from Vault
+        id: fetch-secrets
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        run: |
+          # Specify your secret paths
+          SECRET_PATHS=("secret/data/app/config" "secret/data/app/other")
+
+          # Initialize a JSON object to hold secrets
+          SECRETS_JSON="{}"
+
+          for SECRET_PATH in "${SECRET_PATHS[@]}"; do
+            # Fetch the secret from Vault
+            SECRET_DATA=$(vault kv get -format=json "$SECRET_PATH")
+
+            # Extract the data
+            DATA=$(echo "$SECRET_DATA" | jq -r '.data.data')
+
+            # Merge data into SECRETS_JSON
+            SECRETS_JSON=$(echo "$SECRETS_JSON $DATA" | jq -s '.[0] * .[1]')
+          done
+
+          echo "SECRETS_JSON=$SECRETS_JSON" >> $GITHUB_ENV
+
+      - name: Update GitHub Secrets
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SECRETS_JSON: ${{ env.SECRETS_JSON }}
+        run: |
+          # Repository details
+          OWNER=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
+          REPO=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)
+
+          # Extract secret names and values
+          echo "$SECRETS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > secrets_list.txt
+
+          # Update each secret in GitHub
+          while IFS='=' read -r secret_name secret_value; do
+            echo "Updating secret: $secret_name"
+
+            # Get the public key for the repository
+            response=$(curl -s -H "Authorization: token $GH_PAT" https://api.github.com/repos/$OWNER/$REPO/actions/secrets/public-key)
+            key_id=$(echo "$response" | jq -r .key_id)
+            key=$(echo "$response" | jq -r .key)
+
+            # Encrypt the secret using the public key
+            encrypted_value=$(echo -n "$secret_value" | openssl rsautl -encrypt -pubin -inkey <(echo "$key" | base64 -d) | base64)
+
+            # Update the secret
+            curl -s -X PUT -H "Authorization: token $GH_PAT" \
+              -H "Content-Type: application/json" \
+              -d "{\"encrypted_value\":\"$encrypted_value\",\"key_id\":\"$key_id\"}" \
+              https://api.github.com/repos/$OWNER/$REPO/actions/secrets/$secret_name
+
+          done < secrets_list.txt
