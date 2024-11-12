@@ -42,7 +42,7 @@ jobs:
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         # For KV Version 1
-        $NEW_HASH = vault.exe read -format=json secret/myapp | jq -r '.data' | ConvertTo-Json
+        $NEW_HASH = vault.exe kv get -format=json secret/myapp | jq -r '.data' | ConvertTo-Json
         if (Test-Path .vault_data_hash) {
           $OLD_HASH = Get-Content .vault_data_hash
         } else {
