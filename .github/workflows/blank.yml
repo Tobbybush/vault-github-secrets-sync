@@ -64,11 +64,27 @@ jobs:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
+        $ErrorActionPreference = 'Stop'
         $SECRET_PATHS = @("secret/myapp")
         $SECRETS_JSON = @{}
         
         foreach ($SECRET_PATH in $SECRET_PATHS) {
-            $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
+            Write-Host "Fetching secrets from: $SECRET_PATH"
+            try {
+                $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
+                Write-Host "Fetched data: $($SECRET_DATA | ConvertTo-Json -Depth 10)"
+            } catch {
+                Write-Error "Failed to fetch secrets from Vault. Error: $_"
+                exit 1
+            }
+    
+            # Ensure $SECRET_DATA is a hashtable
+            if ($SECRET_DATA -is [hashtable]) {
+                Write-Host "Secret data is a hashtable."
+            } else {
+                Write-Error "Secret data is not a hashtable. Actual type: $($SECRET_DATA.GetType())"
+                exit 1
+            }
             
             # Merge $SECRET_DATA into $SECRETS_JSON
             foreach ($key in $SECRET_DATA.Keys) {
@@ -78,6 +94,8 @@ jobs:
         
         # Output secrets as JSON
         $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
+        Write-Host "Combined secrets:"
+        Get-Content -Path secrets.json | Write-Host
     
     - name: Update GitHub Secrets
       if: steps.check_vault.outputs.has_changed == 'true'
@@ -85,25 +103,39 @@ jobs:
         GH_PAT: ${{ secrets.GH_PAT }}
       run: |
         $ErrorActionPreference = 'Stop'
-    
+        
         # Output starting message
         Write-Host "Starting the 'Update GitHub Secrets' step."
-    
+        
         # Parse repository information
         $REPO = $env:GITHUB_REPOSITORY -split "/"
         $OWNER = $REPO[0]
         $REPO_NAME = $REPO[1]
         Write-Host "Repository Owner: $OWNER"
         Write-Host "Repository Name: $REPO_NAME"
-    
+        
         # Read secrets from file
-        $SECRETS_JSON = Get-Content -Path secrets.json | ConvertFrom-Json
-        Write-Host "Secrets to update: $($SECRETS_JSON.PSObject.Properties.Name -join ', ')"
-    
+        if (Test-Path -Path secrets.json) {
+            $SECRETS_JSON = Get-Content -Path secrets.json | ConvertFrom-Json
+            Write-Host "Contents of secrets.json:"
+            Get-Content -Path secrets.json | Write-Host
+        } else {
+            Write-Error "secrets.json file not found."
+            exit 1
+        }
+        
+        if ($SECRETS_JSON -eq $null) {
+            Write-Error "No secrets found in secrets.json."
+            exit 1
+        }
+        
+        $secretNames = $SECRETS_JSON.PSObject.Properties.Name
+        Write-Host "Secrets to update: $($secretNames -join ', ')"
+        
         foreach ($secret in $SECRETS_JSON.PSObject.Properties) {
           $secret_name = $secret.Name
           $secret_value = $secret.Value
-    
+        
           Write-Host "Updating secret: $secret_name"
     
           # Get the public key for the repository
