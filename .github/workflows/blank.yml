@@ -102,7 +102,7 @@ jobs:
     - name: Update GitHub Secrets
       if: steps.check_vault.outputs.has_changed == 'true'
       env:
-        GH_PAT: ${{ secrets.GH_PAT }}
+        GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         $ErrorActionPreference = 'Stop'
     
