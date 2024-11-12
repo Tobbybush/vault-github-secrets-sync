@@ -20,6 +20,11 @@ jobs:
         # Verify installation
         jq --version
 
+    - name: Install GitHub CLI
+      run: |
+        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.33.0/gh_2.33.0_windows_amd64.msi -OutFile gh.msi
+        Start-Process msiexec.exe -Wait -ArgumentList '/I gh.msi /quiet'
+
 
     - name: Verify Vault Token
       env:
