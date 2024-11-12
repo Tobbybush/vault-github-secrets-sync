@@ -62,7 +62,7 @@ jobs:
       if: steps.check_vault.outputs.has_changed == 'true'
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         $SECRET_PATHS = @("secret/myapp")
         $SECRETS_JSON = @{}
