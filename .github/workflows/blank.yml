@@ -33,7 +33,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path: .vault_data_hash
-        key: vault-data-hash
+        key: vault-data-hash-${{ hashFiles('.vault_data_hash') }}
   
     - name: Check Vault for Changes
       id: check_vault
