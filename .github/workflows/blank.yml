@@ -80,13 +80,25 @@ jobs:
         $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
     
     - name: Update GitHub Secrets
+      if: steps.check_vault.outputs.has_changed == 'true'
       env:
         GH_PAT: ${{ secrets.GH_PAT }}
       run: |
+        $ErrorActionPreference = 'Stop'
+    
+        # Output starting message
+        Write-Host "Starting the 'Update GitHub Secrets' step."
+    
+        # Parse repository information
         $REPO = $env:GITHUB_REPOSITORY -split "/"
         $OWNER = $REPO[0]
         $REPO_NAME = $REPO[1]
+        Write-Host "Repository Owner: $OWNER"
+        Write-Host "Repository Name: $REPO_NAME"
+    
+        # Read secrets from file
         $SECRETS_JSON = Get-Content -Path secrets.json | ConvertFrom-Json
+        Write-Host "Secrets to update: $($SECRETS_JSON.PSObject.Properties.Name -join ', ')"
     
         foreach ($secret in $SECRETS_JSON.PSObject.Properties) {
           $secret_name = $secret.Name
@@ -96,26 +108,30 @@ jobs:
     
           # Get the public key for the repository
           try {
-            $response = Invoke-RestMethod -Headers @{ Authorization = "token $env:GH_PAT" } `
+            $response = Invoke-RestMethod -Headers @{ Authorization = "token $($env:GH_PAT)" } `
               -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key" `
               -UseBasicParsing
     
             $key_id = $response.key_id
             $public_key = $response.key
+    
+            Write-Host "Retrieved public key for repository."
           }
           catch {
             Write-Error "Failed to get public key. Error: $_"
             exit 1
           }
     
-          # Encryption process (ensure it's correct)
+          # Encryption process
           try {
             $publicKeyBytes = [Convert]::FromBase64String($public_key)
-            $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
             $rsa = [System.Security.Cryptography.RSACryptoServiceProvider]::Create()
             $rsa.ImportSubjectPublicKeyInfo($publicKeyBytes, [ref]0)
+            $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
             $encryptedBytes = $rsa.Encrypt($secretBytes, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
             $encrypted_value = [Convert]::ToBase64String($encryptedBytes)
+    
+            Write-Host "Secret '$secret_name' encrypted successfully."
           }
           catch {
             Write-Error "Failed to encrypt secret '$secret_name'. Error: $_"
@@ -130,7 +146,7 @@ jobs:
     
           # Update the secret
           try {
-            Invoke-RestMethod -Method Put -Headers @{ Authorization = "token $env:GH_PAT" } `
+            $updateResponse = Invoke-RestMethod -Method Put -Headers @{ Authorization = "token $($env:GH_PAT)" } `
               -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name" `
               -ContentType "application/json" -Body $body -UseBasicParsing
     
