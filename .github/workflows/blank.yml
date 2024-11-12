@@ -20,22 +20,11 @@ jobs:
         # Verify installation
         jq --version
 
-    - name: Authenticate with Vault using AppRole
-      id: vault-auth
-      env:
-        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
-        VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
-      run: |
-        # Authenticate and capture the client token
-        $env:VAULT_TOKEN = vault.exe write -field=token auth/approle/login role_id="$env:VAULT_ROLE_ID" secret_id="$env:VAULT_SECRET_ID"
-        echo "::add-mask::$env:VAULT_TOKEN"
-        echo "VAULT_TOKEN=$env:VAULT_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append
 
     - name: Verify Vault Token
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         vault.exe token lookup -format=json | jq '.data'
   
@@ -50,7 +39,7 @@ jobs:
       id: check_vault
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         # For KV Version 1
         $NEW_HASH = vault.exe read -format=json secret/myapp | jq -r '.data' | ConvertTo-Json
