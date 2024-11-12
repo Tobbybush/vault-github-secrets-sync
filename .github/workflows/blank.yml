@@ -64,10 +64,10 @@ jobs:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
       run: |
-        $SECRET_PATHS = @("secret/data/myapp")
+        $SECRET_PATHS = @("secret/myapp")
         $SECRETS_JSON = @{}
         foreach ($SECRET_PATH in $SECRET_PATHS) {
-          $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
+          $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
           $SECRETS_JSON += $SECRET_DATA
         }
         $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
