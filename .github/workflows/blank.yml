@@ -22,8 +22,28 @@ jobs:
 
     - name: Install GitHub CLI
       run: |
-        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.33.0/gh_2.33.0_windows_amd64.msi -OutFile gh.msi
-        Start-Process msiexec.exe -Wait -ArgumentList '/I gh.msi /quiet'
+        $ErrorActionPreference = 'Stop'
+    
+        # Create a directory for gh
+        $ghInstallDir = "$env:USERPROFILE\gh-cli"
+        New-Item -ItemType Directory -Force -Path $ghInstallDir
+    
+        # Download the zip file
+        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/latest/download/gh_2.35.0_windows_amd64.zip -OutFile gh.zip
+    
+        # Extract the zip file
+        Expand-Archive -Path gh.zip -DestinationPath $ghInstallDir
+    
+        # The extracted folder may have a version-specific name
+        $extractedFolder = Get-ChildItem -Path $ghInstallDir | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+    
+        # Add gh to the PATH for the current session
+        $ghPath = "$($extractedFolder.FullName)\bin"
+        [Environment]::SetEnvironmentVariable("PATH", "$ghPath;$env:PATH", [System.EnvironmentVariableTarget]::Process)
+    
+        # Verify installation
+        gh --version
+
 
 
     - name: Verify Vault Token
