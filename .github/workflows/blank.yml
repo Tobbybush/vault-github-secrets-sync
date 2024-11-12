@@ -65,7 +65,10 @@ jobs:
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $SECRET_PATHS = @("secret/myapp")
+        $SECRET_PATHS = @(
+        "secret/myapp/frontend",
+        "secret/myapp/backend"
+        )
         $SECRETS_JSON = @{}
         
         foreach ($SECRET_PATH in $SECRET_PATHS) {
