@@ -71,24 +71,26 @@ jobs:
         foreach ($SECRET_PATH in $SECRET_PATHS) {
             Write-Host "Fetching secrets from: $SECRET_PATH"
             try {
-                $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
+                $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
                 Write-Host "Fetched data: $($SECRET_DATA | ConvertTo-Json -Depth 10)"
             } catch {
                 Write-Error "Failed to fetch secrets from Vault. Error: $_"
                 exit 1
             }
-    
-            # Ensure $SECRET_DATA is a hashtable
-            if ($SECRET_DATA -is [hashtable]) {
-                Write-Host "Secret data is a hashtable."
+        
+            # Ensure $SECRET_DATA is a PSCustomObject
+            if ($SECRET_DATA -is [PSCustomObject]) {
+                Write-Host "Secret data is a PSCustomObject."
             } else {
-                Write-Error "Secret data is not a hashtable. Actual type: $($SECRET_DATA.GetType())"
+                Write-Error "Secret data is not a PSCustomObject. Actual type: $($SECRET_DATA.GetType())"
                 exit 1
             }
-            
+        
             # Merge $SECRET_DATA into $SECRETS_JSON
-            foreach ($key in $SECRET_DATA.Keys) {
-                $SECRETS_JSON[$key] = $SECRET_DATA[$key]
+            foreach ($property in $SECRET_DATA.PSObject.Properties) {
+                $key = $property.Name
+                $value = $property.Value
+                $SECRETS_JSON[$key] = $value
             }
         }
         
