@@ -66,11 +66,20 @@ jobs:
       run: |
         $SECRET_PATHS = @("secret/myapp")
         $SECRETS_JSON = @{}
+        
         foreach ($SECRET_PATH in $SECRET_PATHS) {
-          $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
-          $SECRETS_JSON += $SECRET_DATA
+            $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data' | ConvertFrom-Json
+            
+            # Merge $SECRET_DATA into $SECRETS_JSON
+            foreach ($key in $SECRET_DATA.Keys) {
+                $SECRETS_JSON[$key] = $SECRET_DATA[$key]
+            }
         }
+        
+        # Output secrets as JSON
         $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
+        
+        # Set secrets as environment variable
         echo "SECRETS_JSON=$(Get-Content secrets.json)" | Out-File $env:GITHUB_ENV -Append
   
     - name: Update GitHub Secrets
