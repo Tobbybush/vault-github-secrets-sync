@@ -159,7 +159,7 @@ jobs:
           # Encryption process
           try {
             $publicKeyBytes = [Convert]::FromBase64String($public_key)
-            $rsa = [System.Security.Cryptography.RSACryptoServiceProvider]::Create()
+            $rsa = [System.Security.Cryptography.RSA]::Create()
             $rsa.ImportSubjectPublicKeyInfo($publicKeyBytes, [ref]0)
             $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
             $encryptedBytes = $rsa.Encrypt($secretBytes, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
