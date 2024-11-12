@@ -78,52 +78,65 @@ jobs:
         
         # Output secrets as JSON
         $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
-        
-        # Set secrets as environment variable
-        echo "SECRETS_JSON=$(Get-Content secrets.json)" | Out-File $env:GITHUB_ENV -Append
-  
+    
     - name: Update GitHub Secrets
       env:
         GH_PAT: ${{ secrets.GH_PAT }}
-        SECRETS_JSON: ${{ env.SECRETS_JSON }}
       run: |
         $REPO = $env:GITHUB_REPOSITORY -split "/"
         $OWNER = $REPO[0]
         $REPO_NAME = $REPO[1]
-        $SECRETS = (Get-Content secrets.json | ConvertFrom-Json)
-  
-        foreach ($secret in $SECRETS.PSObject.Properties) {
+        $SECRETS_JSON = Get-Content -Path secrets.json | ConvertFrom-Json
+    
+        foreach ($secret in $SECRETS_JSON.PSObject.Properties) {
           $secret_name = $secret.Name
           $secret_value = $secret.Value
-  
+    
           Write-Host "Updating secret: $secret_name"
-  
+    
           # Get the public key for the repository
-          $response = Invoke-RestMethod -Headers @{ Authorization = "token $env:GH_PAT" } `
-            -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key" `
-            -UseBasicParsing
-  
-          $key_id = $response.key_id
-          $public_key = $response.key
-  
-          # Convert the public key from base64 to bytes
-          $publicKeyBytes = [Convert]::FromBase64String($public_key)
-  
-          # Encrypt the secret value using the public key
-          $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
-          $rsa = [System.Security.Cryptography.RSA]::Create()
-          $rsa.ImportSubjectPublicKeyInfo($publicKeyBytes, [ref]0)
-          $encryptedBytes = $rsa.Encrypt($secretBytes, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
-          $encrypted_value = [Convert]::ToBase64String($encryptedBytes)
-  
+          try {
+            $response = Invoke-RestMethod -Headers @{ Authorization = "token $env:GH_PAT" } `
+              -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/public-key" `
+              -UseBasicParsing
+    
+            $key_id = $response.key_id
+            $public_key = $response.key
+          }
+          catch {
+            Write-Error "Failed to get public key. Error: $_"
+            exit 1
+          }
+    
+          # Encryption process (ensure it's correct)
+          try {
+            $publicKeyBytes = [Convert]::FromBase64String($public_key)
+            $secretBytes = [System.Text.Encoding]::UTF8.GetBytes($secret_value)
+            $rsa = [System.Security.Cryptography.RSACryptoServiceProvider]::Create()
+            $rsa.ImportSubjectPublicKeyInfo($publicKeyBytes, [ref]0)
+            $encryptedBytes = $rsa.Encrypt($secretBytes, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
+            $encrypted_value = [Convert]::ToBase64String($encryptedBytes)
+          }
+          catch {
+            Write-Error "Failed to encrypt secret '$secret_name'. Error: $_"
+            continue
+          }
+    
           # Prepare the body for the API request
           $body = @{
             encrypted_value = $encrypted_value
             key_id = $key_id
           } | ConvertTo-Json
-  
+    
           # Update the secret
-          Invoke-RestMethod -Method Put -Headers @{ Authorization = "token $env:GH_PAT" } `
-            -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name" `
-            -ContentType "application/json" -Body $body -UseBasicParsing
+          try {
+            Invoke-RestMethod -Method Put -Headers @{ Authorization = "token $env:GH_PAT" } `
+              -Uri "https://api.github.com/repos/$OWNER/$REPO_NAME/actions/secrets/$secret_name" `
+              -ContentType "application/json" -Body $body -UseBasicParsing
+    
+            Write-Host "Secret '$secret_name' updated successfully."
+          }
+          catch {
+            Write-Error "Failed to update secret '$secret_name'. Error: $_"
+          }
         }
