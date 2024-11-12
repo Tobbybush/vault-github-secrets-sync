@@ -29,7 +29,7 @@ jobs:
         New-Item -ItemType Directory -Force -Path $ghInstallDir
     
         # Download the zip file
-        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/latest/download/gh_2.35.0_windows_amd64.zip -OutFile gh.zip
+        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.61.0/gh_2.61.0_windows_arm64.zip -OutFile gh.zip
     
         # Extract the zip file
         Expand-Archive -Path gh.zip -DestinationPath $ghInstallDir
