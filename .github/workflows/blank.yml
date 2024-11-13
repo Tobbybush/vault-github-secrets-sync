@@ -41,13 +41,45 @@ jobs:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
-        # For KV Version 1
-        $NEW_HASH = vault.exe kv get -format=json secret/myapp | jq -r '.data' | ConvertTo-Json
+        $ErrorActionPreference = 'Stop'
+    
+        # Define the secret paths to check
+        $SECRET_PATHS = @(
+          "secret/myapp/frontend",
+          "secret/myapp/backend"
+        )
+    
+        # Initialize an array to hold the data from all secret paths
+        $ALL_SECRET_DATA = @()
+    
+        foreach ($SECRET_PATH in $SECRET_PATHS) {
+            Write-Host "Fetching data from: $SECRET_PATH"
+    
+            try {
+                # Fetch the secrets from the current path
+                $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
+                Write-Host "Fetched data from $SECRET_PATH"
+                # Add the data to the array
+                $ALL_SECRET_DATA += $SECRET_DATA
+            } catch {
+                Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
+                exit 1
+            }
+        }
+    
+        # Combine all secret data into a single JSON string
+        $COMBINED_SECRET_DATA = $ALL_SECRET_DATA -join ""
+        
+        # Compute a hash of the combined secret data
+        $NEW_HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($COMBINED_SECRET_DATA))).Replace("-", "")
+        
+        # Check if the hash file exists
         if (Test-Path .vault_data_hash) {
           $OLD_HASH = Get-Content .vault_data_hash
         } else {
           $OLD_HASH = ""
         }
+    
         if ($NEW_HASH -ne $OLD_HASH) {
           Write-Host "Vault data has changed."
           $NEW_HASH | Out-File .vault_data_hash
