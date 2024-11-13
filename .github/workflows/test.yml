@@ -1,8 +1,8 @@
-name: Update GitHub Secrets 
+name: Update GitHub Secrets from Vault
 
 on:
-  #schedule:
-    #- cron: '0 * * * *'  # Runs every hour
+  schedule:
+    - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:
 
 jobs:
@@ -20,34 +20,6 @@ jobs:
         # Verify installation
         jq --version
 
-    - name: Install GitHub CLI
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        # Define the version (ensure this matches your installation needs)
-        $ghVersion = "2.35.0"
-
-        # Create a directory for gh
-        $ghInstallDir = "$env:USERPROFILE\gh-cli"
-        New-Item -ItemType Directory -Force -Path $ghInstallDir
-
-        # Download the zip file for the specified version
-        $ghZipUrl = "https://github.com/cli/cli/releases/download/v$ghVersion/gh_${ghVersion}_windows_amd64.zip"
-        Invoke-WebRequest -Uri $ghZipUrl -OutFile gh.zip
-
-        # Extract the zip file
-        Expand-Archive -Path gh.zip -DestinationPath $ghInstallDir
-
-        # The extracted folder may have a version-specific name
-        $extractedFolder = Get-ChildItem -Path $ghInstallDir | Where-Object { $_.PSIsContainer } | Select-Object -First 1
-
-        # Add gh to the PATH for the current session
-        $ghPath = "$($extractedFolder.FullName)\bin"
-        [Environment]::SetEnvironmentVariable("PATH", "$ghPath;$env:PATH", [System.EnvironmentVariableTarget]::Process)
-
-        # Verify installation
-        gh --version
-
     - name: Verify Vault Token
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
@@ -59,8 +31,8 @@ jobs:
       id: cache_hash
       uses: actions/cache@v3
       with:
-        path: .vault_data_hash.json
-        key: vault-data-hash-${{ hashFiles('.vault_data_hash.json') }}
+         path: .vault_data_hash
+         key: vault-data-hash-${{ hashFiles('.vault_data_hash') }}
 
     - name: Check Vault for Changes
       id: check_vault
@@ -69,158 +41,109 @@ jobs:
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
-
+    
         # Define the secret paths to check
         $SECRET_PATHS = @(
-          "secret/myapp/frontend",
-          "secret/myapp/backend"
+          "secret/myapp/frontend/dev"  # Updated to target the 'dev' folder
         )
-
-        # Initialize a hashtable to store current hashes
-        $CURRENT_HASHES = @{}
-
+    
+        # Initialize an array to hold the data from all secret paths
+        $ALL_SECRET_DATA = @()
+    
         foreach ($SECRET_PATH in $SECRET_PATHS) {
             Write-Host "Fetching data from: $SECRET_PATH"
-
+    
             try {
                 # Fetch the secrets from the current path
                 $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
                 Write-Host "Fetched data from $SECRET_PATH"
+                # Add the data to the array
+                $ALL_SECRET_DATA += $SECRET_DATA
             } catch {
                 Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
                 exit 1
             }
-
-            # Compute SHA-256 hash of the secret data
-            $hashAlgorithm = [System.Security.Cryptography.SHA256]::Create()
-            $hashBytes = $hashAlgorithm.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA))
-            $hashString = [BitConverter]::ToString($hashBytes) -replace '-', ''
-
-            # Store the hash in the hashtable
-            $CURRENT_HASHES[$SECRET_PATH] = $hashString
         }
-
-        # Load previous hashes from cache
-        if (Test-Path .vault_data_hash.json) {
-            $PREVIOUS_HASHES = Get-Content .vault_data_hash.json | ConvertFrom-Json
+    
+        # Combine all secret data into a single JSON string
+        $COMBINED_SECRET_DATA = $ALL_SECRET_DATA -join ""
+        
+        # Compute a hash of the combined secret data
+        $NEW_HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($COMBINED_SECRET_DATA))).Replace("-", "")
+        
+        # Check if the hash file exists
+        if (Test-Path .vault_data_hash) {
+          $OLD_HASH = Get-Content .vault_data_hash
         } else {
-            $PREVIOUS_HASHES = @{}
+          $OLD_HASH = ""
         }
-
-        # Initialize a flag to indicate if any changes occurred
-        $has_changed = $false
-
-        foreach ($SECRET_PATH in $SECRET_PATHS) {
-            if ($PREVIOUS_HASHES.PSObject.Properties.Name -contains $SECRET_PATH) {
-                if ($CURRENT_HASHES[$SECRET_PATH] -ne $PREVIOUS_HASHES[$SECRET_PATH]) {
-                    Write-Host "Change detected in: $SECRET_PATH"
-                    $has_changed = $true
-                } else {
-                    Write-Host "No changes in: $SECRET_PATH"
-                }
-            } else {
-                Write-Host "No previous hash for: $SECRET_PATH. Treating as changed."
-                $has_changed = $true
-            }
-        }
-
-        # Update the hash file with current hashes
-        $CURRENT_HASHES | ConvertTo-Json -Depth 100 | Out-File .vault_data_hash.json
-
-        # Set the output
-        if ($has_changed) {
-            Write-Host "Changes detected in Vault secrets."
-            echo "has_changed=true" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    
+        if ($NEW_HASH -ne $OLD_HASH) {
+          Write-Host "Vault data has changed."
+          $NEW_HASH | Out-File .vault_data_hash
+          echo "has_changed=true" | Out-File $env:GITHUB_OUTPUT -Append
         } else {
-            Write-Host "No changes detected in Vault secrets."
-            echo "has_changed=false" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "No changes in Vault data."
+          echo "has_changed=false" | Out-File $env:GITHUB_OUTPUT -Append
         }
-
-    - name: Fetch Secrets from Vault
+  
+    - name: Fetch and Merge Secrets from Vault
       id: fetch-secrets
-      if: ${{ steps.check_vault.outputs.has_changed == 'true' }}
+      if: steps.check_vault.outputs.has_changed == 'true'
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
+        $SECRET_PATH = "secret/myapp/frontend/dev"  # Target the 'dev' folder
         
-        # Define the secret paths to fetch
-        $SECRET_PATHS = @(
-          "secret/myapp/frontend",
-          "secret/myapp/backend"
-        )
-        
-        # Initialize an empty hashtable to store fetched secrets
-        $SECRETS_JSON = @{}
-        
-        foreach ($SECRET_PATH in $SECRET_PATHS) {
-            Write-Host "Fetching secrets from: $SECRET_PATH"
-            try {
-                # Fetch the secrets from the current path
-                $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
-                Write-Host "Fetched data from $SECRET_PATH"
-            } catch {
-                Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
-                exit 1
-            }
-        
-            # Ensure $SECRET_DATA is a PSCustomObject
-            if ($SECRET_DATA -is [PSCustomObject]) {
-                Write-Host "Secret data from $SECRET_PATH is a PSCustomObject."
-            } else {
-                Write-Error "Secret data from $SECRET_PATH is not a PSCustomObject. Actual type: $($SECRET_DATA.GetType())"
-                exit 1
-            }
-        
-            # Namespacing keys to prevent collisions
-            $namespace = ($SECRET_PATH -split '/')[-1]  # Get 'frontend' or 'backend'
-            foreach ($property in $SECRET_DATA.PSObject.Properties) {
-                $key = "$namespace`_$($property.Name)"  # e.g., 'frontend_API_KEY'
-                $value = $property.Value
-                $SECRETS_JSON[$key] = $value
-            }
+        Write-Host "Fetching secrets from: $SECRET_PATH"
+        try {
+            $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
+            Write-Host "Fetched data: $($SECRET_DATA | ConvertTo-Json -Depth 10)"
+        } catch {
+            Write-Error "Failed to fetch secrets from Vault. Error: $_"
+            exit 1
         }
-        
-        # Output secrets as JSON
-        $SECRETS_JSON | ConvertTo-Json -Depth 100 | Out-File -FilePath secrets.json
-        Write-Host "Combined secrets from changed paths:"
-        Get-Content -Path secrets.json | Write-Host
+    
+        # Initialize an empty string to hold the merged secrets
+        $MERGED_SECRETS = ""
+    
+        # Iterate over each secret and append to the merged string
+        foreach ($property in $SECRET_DATA.PSObject.Properties) {
+            $key = $property.Name
+            $value = $property.Value
+            $MERGED_SECRETS += "$key='$value'`n"  # Append each key-value pair with a newline
+        }
+    
+        # Remove the trailing newline
+        $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
+    
+        # Save the merged secrets to a file
+        $MERGED_SECRETS | Out-File -FilePath merged_secrets.txt
+        Write-Host "Combined secrets:"
+        Get-Content -Path merged_secrets.txt | Write-Host
 
-    - name: Update GitHub Secrets
-      if: ${{ steps.check_vault.outputs.has_changed == 'true' }}
+    - name: Update GitHub Secret
+      if: steps.check_vault.outputs.has_changed == 'true'
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         $ErrorActionPreference = 'Stop'
     
-        # Parse repository information
-        $REPO = $env:GITHUB_REPOSITORY
+        # Define the name of the GitHub secret you want to update
+        $GITHUB_SECRET_NAME = "MERGED_SECRET"  # You can name it as desired
     
-        # Read secrets from file
-        if (Test-Path -Path secrets.json) {
-            $SECRETS_JSON = Get-Content -Path secrets.json | ConvertFrom-Json
-            Write-Host "Contents of secrets.json:"
-            Get-Content -Path secrets.json | Write-Host
+        # Read merged secrets from file
+        if (Test-Path -Path merged_secrets.txt) {
+            $MERGED_SECRETS = Get-Content -Path merged_secrets.txt -Raw
+            Write-Host "Contents of merged_secrets.txt:"
+            Write-Host $MERGED_SECRETS
         } else {
-            Write-Error "secrets.json file not found."
+            Write-Error "merged_secrets.txt file not found."
             exit 1
         }
     
-        foreach ($secret in $SECRETS_JSON.PSObject.Properties) {
-          $secret_name = $secret.Name
-          $secret_value = $secret.Value
-    
-          Write-Host "Updating secret: $secret_name"
-    
-          # Set the secret using gh CLI
-          echo $secret_value | gh secret set $secret_name --repo $REPO --app actions
-    
-          # Check if the gh command succeeded
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to update secret '$secret_name' with gh CLI."
-            exit 1
-          }
-    
-          Write-Host "Secret '$secret_name' updated successfully."
-        }
+        # Set the merged secret using gh CLI
+        echo "$MERGED_SECRETS" | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
+        Write-Host "Secret '$GITHUB_SECRET_NAME' updated successfully."
