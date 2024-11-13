@@ -33,7 +33,7 @@ jobs:
       run: |
         $hash = Get-FileHash .vault_data_hash -Algorithm SHA256
         echo "::set-output name=key::vault-data-hash-$($hash.Hash)"
-      shell: pwsh
+      shell: powershell
     
     - name: Cache Vault Data
       uses: actions/cache@v3
