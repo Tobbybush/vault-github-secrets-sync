@@ -33,7 +33,7 @@ jobs:
       run: |
         $hash = Get-FileHash .vault_data_hash -Algorithm SHA256
         echo "vault-data-hash-$($hash.Hash)" > cache-key.txt
-      shell: pwsh
+      shell: powershell
     
     - name: Set Cache Key
       run: echo "vault-data-hash-$(cat cache-key.txt)"
