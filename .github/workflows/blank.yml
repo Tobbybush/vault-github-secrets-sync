@@ -33,7 +33,10 @@ jobs:
         if (!(Test-Path -Path ".vault_data_hash")) {
           Write-Host "Path .vault_data_hash does not exist"
           exit 1
+        } else {
+          Write-Host "Path .vault_data_hash exists"
         }
+      shell: powershell
 
     - name: Generate Cache Key
       id: generate-key
