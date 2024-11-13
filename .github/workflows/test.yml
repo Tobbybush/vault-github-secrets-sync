@@ -81,7 +81,7 @@ jobs:
         $CHANGED_PATHS = @()
     
         foreach ($SECRET_PATH in $SECRET_PATHS) {
-            if ($PREVIOUS_HASHES.ContainsKey($SECRET_PATH)) {
+            if ($PREVIOUS_HASHES.PSObject.Properties.Name -contains $SECRET_PATH) {
                 if ($CURRENT_HASHES[$SECRET_PATH] -ne $PREVIOUS_HASHES[$SECRET_PATH]) {
                     Write-Host "Change detected in: $SECRET_PATH"
                     $CHANGED_PATHS += $SECRET_PATH
@@ -99,8 +99,10 @@ jobs:
     
         # Determine if any paths have changed
         if ($CHANGED_PATHS.Count -gt 0) {
-            Write-Host "Some secrets have changed."
-            echo "changed_paths=$( $CHANGED_PATHS -join ',' )" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "Some secrets have changed: $CHANGED_PATHS"
+            # Convert array to comma-separated string
+            $changed_paths_string = $CHANGED_PATHS -join ','
+            echo "changed_paths=$changed_paths_string" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
         } else {
             Write-Host "No changes detected in any secrets."
             echo "changed_paths=" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
