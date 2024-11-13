@@ -27,13 +27,20 @@ jobs:
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         vault.exe token lookup -format=json | jq '.data'
+
+    - name: Generate Cache Key
+      id: cache-key
+      run: echo "vault-data-hash-$(sha256sum .vault_data_hash | cut -d' ' -f1)" > cache-key.txt
+    
+    - name: Set Cache Key
+      run: echo "vault-data-hash-$(cat cache-key.txt)"
   
-    - name: Cache Vault Data Hash
-      id: cache_hash
+    - name: Restore Cache
       uses: actions/cache@v3
       with:
         path: .vault_data_hash
-        key: vault-data-hash-${{ runner.os }}-${{ hashFiles('.vault_data_hash') }}
+        key: ${{ steps.cache-key.outputs.key }}
+        fail-on-cache-miss: false
   
     - name: Check Vault for Changes
       id: check_vault
