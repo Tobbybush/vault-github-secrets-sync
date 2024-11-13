@@ -29,26 +29,13 @@ jobs:
         vault.exe token lookup -format=json | jq '.data'
 
 
-    - name: Generate Cache Key
-      id: generate-key
-      run: |
-        $hash = Get-FileHash .vault_data_hash -Algorithm SHA256
-        echo "::set-output name=key::vault-data-hash-$($hash.Hash)"
-      shell: powershell
-    
-    - name: Cache Vault Data
+    - name: Cache Vault Data Hash
+      id: cache_hash
       uses: actions/cache@v3
       with:
-        path: .vault_data_hash
-        key: ${{ steps.generate-key.outputs.key }}
-        fail-on-cache-miss: false
+         path: .vault_data_hash
+         key: vault-data-hash-${{ hashFiles('.vault_data_hash') }}
 
-    - name: Save Cache
-      uses: actions/cache@v3
-      with:
-        path: .vault_data_hash
-        key: ${{ steps.generate-key.outputs.key }}
-    
     - name: Check Vault for Changes
       id: check_vault
       env:
