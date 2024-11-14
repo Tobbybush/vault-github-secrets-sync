@@ -55,6 +55,7 @@ jobs:
         path: |
           .vault_data_hash_dev
           .vault_data_hash_stage
+          .vault_data_hash_prod
         key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
 
     - name: Check Vault for Changes
@@ -188,11 +189,7 @@ jobs:
         $ErrorActionPreference = 'Stop'
 
         Write-Host "Starting Update GitHub Secrets step..."
-        
-        # Temporary Debugging (Remove after verification)
-        Write-Host "DEV_HAS_CHANGED: $env:DEV_HAS_CHANGED"
-        Write-Host "STAGE_HAS_CHANGED: $env:STAGE_HAS_CHANGED"
-        Write-Host "PROD_HAS_CHANGED: $env:PROD_HAS_CHANGED"
+    
 
         # Verify gh CLI is authenticated
         gh auth status
