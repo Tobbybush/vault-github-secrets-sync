@@ -163,9 +163,6 @@ jobs:
         steps.check_vault.outputs.dev_has_changed == 'true' ||
         steps.check_vault.outputs.stage_has_changed == 'true'
       shell: powershell
-      env:
-        # GH_TOKEN is already used to authenticate the gh CLI in the previous step
-        # No need to pass it again unless necessary
       run: |
         $ErrorActionPreference = 'Stop'
         
