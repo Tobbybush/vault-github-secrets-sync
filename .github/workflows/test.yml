@@ -163,15 +163,22 @@ jobs:
         steps.check_vault.outputs.dev_has_changed == 'true' ||
         steps.check_vault.outputs.stage_has_changed == 'true'
       shell: powershell
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         $ErrorActionPreference = 'Stop'
-        
+
+        Write-Host "Starting Update GitHub Secrets step..."
+
+        # Verify gh CLI is authenticated
+        gh auth status
+
         # Define the secret paths and their corresponding GitHub secret names
         $SECRET_PATHS = @{
           "secret/myapp/frontend/dev" = "MERGED_DEV_SECRET"
           "secret/myapp/frontend/stage" = "MERGED_STAGE_SECRET"
         }
-        
+
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
             # Determine the corresponding 'has_changed' environment variable
             if ($SECRET_PATH -eq "secret/myapp/frontend/dev") {
@@ -183,6 +190,8 @@ jobs:
                 continue
             }
             
+            Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
+
             if ($has_changed -eq 'true') {
                 $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                 $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
@@ -199,7 +208,15 @@ jobs:
                 }
                 
                 # Set the merged secret using gh CLI
-                $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
-                Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
+                Write-Host "Executing gh secret set for ${GITHUB_SECRET_NAME}..."
+                try {
+                    $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
+                    Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
+                } catch {
+                    Write-Error "Failed to set secret '${GITHUB_SECRET_NAME}'. Error: $_"
+                    exit 1
+                }
+            } else {
+                Write-Host "No changes detected for secret path: $SECRET_PATH"
             }
         }
