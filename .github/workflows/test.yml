@@ -36,10 +36,8 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
-        $ErrorActionPreference = 'Stop'
-        # Authenticate using the provided token
+        Write-Host "Authenticating GitHub CLI..."
         echo $env:GH_TOKEN | gh auth login --with-token
-        # Verify authentication
         gh auth status
 
     - name: Verify Vault Token
@@ -99,7 +97,7 @@ jobs:
               "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             } else {
               Write-Host "No changes in Vault data for path: $SECRET_PATH"
-              "$($SECRET_PATHs[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             }
         }
 
@@ -131,6 +129,7 @@ jobs:
                 Write-Host "Unknown secret path: $SECRET_PATH"
                 continue
             }
+            Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
             if ($has_changed -eq 'true') {
                 Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
                 try {
@@ -158,6 +157,15 @@ jobs:
             }
         }
 
+    - name: List Merged Secrets Files
+      if: |
+        steps.check_vault.outputs.dev_has_changed == 'true' ||
+        steps.check_vault.outputs.stage_has_changed == 'true'
+      shell: powershell
+      run: |
+        Write-Host "Listing merged secrets files:"
+        Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
+
     - name: Update GitHub Secrets
       if: |
         steps.check_vault.outputs.dev_has_changed == 'true' ||
@@ -165,10 +173,16 @@ jobs:
       shell: powershell
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
+        DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.dev_has_changed }}
+        STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.stage_has_changed }}
       run: |
         $ErrorActionPreference = 'Stop'
 
         Write-Host "Starting Update GitHub Secrets step..."
+        
+        # Temporary Debugging (Remove after verification)
+        Write-Host "DEV_HAS_CHANGED: $env:DEV_HAS_CHANGED"
+        Write-Host "STAGE_HAS_CHANGED: $env:STAGE_HAS_CHANGED"
 
         # Verify gh CLI is authenticated
         gh auth status
