@@ -195,7 +195,8 @@ jobs:
                 }
                 
                 # Set the merged secret using gh CLI
-                echo "$MERGED_SECRETS" | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
+                Write-Output "$MERGED_SECRETS" | gh secret set $GITHUB_SECRET_NAME --repo Forlarhh/vault-github-secrets-sync --body -
                 Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
             }
         }
+
