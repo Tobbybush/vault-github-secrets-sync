@@ -9,6 +9,8 @@ on:
 jobs:
   update-secrets:
     runs-on: [self-hosted, Windows, x64]
+    #environment: 
+      #name: APPROVAL  # Place the environment at the job level.
 
     steps:
     
