@@ -2,7 +2,7 @@ name: Update GitHub Secrets from Vault
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Runs every hour
+    - cron: '0 0 */2 * *'  # Runs every 2days
   workflow_dispatch:
 
 jobs:
