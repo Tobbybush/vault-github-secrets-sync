@@ -15,11 +15,32 @@ jobs:
       shell: powershell
       run: |
         # Download jq.exe
-        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile $env:USERPROFILE\jq.exe
+        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile "$env:USERPROFILE\jq.exe"
         # Add the directory to PATH for the current session
-        [Environment]::SetEnvironmentVariable("PATH", "$env:USERPROFILE;$env:PATH", [System.EnvironmentVariableTarget]::Process)
+        $env:PATH += ";$env:USERPROFILE"
         # Verify installation
         jq --version
+
+    - name: Install GitHub CLI
+      shell: powershell
+      run: |
+        # Download GitHub CLI installer
+        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.40.0/gh_2.40.0_windows_amd64.msi -OutFile "$env:USERPROFILE\gh_installer.msi"
+        # Install GitHub CLI silently
+        Start-Process msiexec.exe -ArgumentList "/i", "$env:USERPROFILE\gh_installer.msi", "/qn", "/norestart" -Wait
+        # Verify installation
+        gh --version
+
+    - name: Authenticate GitHub CLI
+      shell: powershell
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # Authenticate using the provided token
+        echo $env:GH_TOKEN | gh auth login --with-token
+        # Verify authentication
+        gh auth status
 
     - name: Verify Vault Token
       shell: powershell
@@ -46,16 +67,13 @@ jobs:
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
-
         # Define the secret paths and their corresponding output names
         $SECRET_PATHS = @{
           "secret/myapp/frontend/dev" = "dev_has_changed"
           "secret/myapp/frontend/stage" = "stage_has_changed"
         }
-
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
             Write-Host "Processing Vault path: $SECRET_PATH"
-
             try {
                 # Fetch the secrets from the current path
                 $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
@@ -64,20 +82,16 @@ jobs:
                 Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
                 exit 1
             }
-
             # Compute a hash of the secret data
             $HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA_JSON))).Replace("-", "")
-
             # Define hash file name based on path
             $HASH_FILE = ".vault_data_hash_$($SECRET_PATH.Split('/')[-1])"
-
             # Read the old hash if it exists
             if (Test-Path $HASH_FILE) {
               $OLD_HASH = Get-Content $HASH_FILE
             } else {
               $OLD_HASH = ""
             }
-
             if ($HASH -ne $OLD_HASH) {
               Write-Host "Vault data has changed for path: $SECRET_PATH"
               $HASH | Out-File -FilePath $HASH_FILE
@@ -102,13 +116,11 @@ jobs:
         STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.stage_has_changed }}
       run: |
         $ErrorActionPreference = 'Stop'
-
         # Define the secret paths and their corresponding GitHub secret names
         $SECRET_PATHS = @{
           "secret/myapp/frontend/dev" = "MERGED_DEV_SECRET"
           "secret/myapp/frontend/stage" = "MERGED_STAGE_SECRET"
         }
-
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
             # Determine the corresponding 'has_changed' environment variable
             if ($SECRET_PATH -eq "secret/myapp/frontend/dev") {
@@ -119,10 +131,8 @@ jobs:
                 Write-Host "Unknown secret path: $SECRET_PATH"
                 continue
             }
-
             if ($has_changed -eq 'true') {
                 Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
-
                 try {
                     $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
                     Write-Host "Fetched data: $($SECRET_DATA | ConvertTo-Json -Depth 10)"
@@ -130,20 +140,16 @@ jobs:
                     Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
                     exit 1
                 }
-
                 # Initialize an empty string to hold the merged secrets
                 $MERGED_SECRETS = ""
-
                 # Iterate over each secret and append to the merged string
                 foreach ($property in $SECRET_DATA.PSObject.Properties) {
                     $key = $property.Name
                     $value = $property.Value
                     $MERGED_SECRETS += "$key='$value'`n"  # Append each key-value pair with a newline
                 }
-
                 # Remove the trailing newline
                 $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
-
                 # Save the merged secrets to a file named based on the secret name
                 $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                 $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
@@ -158,7 +164,8 @@ jobs:
         steps.check_vault.outputs.stage_has_changed == 'true'
       shell: powershell
       env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
+        # GH_TOKEN is already used to authenticate the gh CLI in the previous step
+        # No need to pass it again unless necessary
       run: |
         $ErrorActionPreference = 'Stop'
         
@@ -195,8 +202,7 @@ jobs:
                 }
                 
                 # Set the merged secret using gh CLI
-                Write-Output "$MERGED_SECRETS" | gh secret set $GITHUB_SECRET_NAME --repo Forlarhh/vault-github-secrets-sync --body -
+                $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
                 Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
             }
         }
-
