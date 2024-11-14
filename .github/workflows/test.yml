@@ -1,4 +1,4 @@
-name: Update GitHub Secrets from Vault
+name: Update GitHub Secrets
 
 on:
   schedule:
@@ -44,10 +44,10 @@ jobs:
       run: |
         $ErrorActionPreference = 'Stop'
 
-        # Define the secret paths and their corresponding GitHub secret names
+        # Define the secret paths and their corresponding output names
         $SECRET_PATHS = @{
-          "secret/myapp/frontend/dev" = "MERGED_DEV_SECRET"
-          "secret/myapp/frontend/stage" = "MERGED_STAGE_SECRET"
+          "secret/myapp/frontend/dev" = "dev_has_changed"
+          "secret/myapp/frontend/stage" = "stage_has_changed"
         }
 
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
@@ -79,21 +79,23 @@ jobs:
               Write-Host "Vault data has changed for path: $SECRET_PATH"
               $HASH | Out-File $HASH_FILE
               # Set an output indicating this path has changed
-              echo "$($SECRET_PATH)_has_changed=true" | Out-File $env:GITHUB_OUTPUT -Append
+              echo "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File $env:GITHUB_OUTPUT -Append
             } else {
               Write-Host "No changes in Vault data for path: $SECRET_PATH"
-              echo "$($SECRET_PATH)_has_changed=false" | Out-File $env:GITHUB_OUTPUT -Append
+              echo "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File $env:GITHUB_OUTPUT -Append
             }
         }
 
     - name: Fetch and Merge Secrets from Vault
       id: fetch_secrets
       if: |
-        steps.check_vault.outputs['secret/myapp/frontend/dev_has_changed'] == 'true' ||
-        steps.check_vault.outputs['secret/myapp/frontend/stage_has_changed'] == 'true'
+        steps.check_vault.outputs.dev_has_changed == 'true' ||
+        steps.check_vault.outputs.stage_has_changed == 'true'
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.dev_has_changed }}
+        STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.stage_has_changed }}
       run: |
         $ErrorActionPreference = 'Stop'
 
@@ -104,7 +106,13 @@ jobs:
         }
 
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
-            $has_changed = "$(steps.check_vault.outputs['$SECRET_PATH'_has_changed])"
+            # Determine the output name
+            $output_name = $SECRET_PATHS[$SECRET_PATH] -replace 'MERGED_', '' -replace '_SECRET', '_HAS_CHANGED'
+            
+            # Access the corresponding environment variable
+            $env_var = $output_name.ToUpper()
+            $has_changed = $env:$env_var
+
             if ($has_changed -eq 'true') {
                 Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
 
@@ -131,16 +139,16 @@ jobs:
 
                 # Save the merged secrets to a file named based on the secret name
                 $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
-                $MERGED_SECRETS | Out-File -FilePath "merged_secrets_$GITHUB_SECRET_NAME.txt"
+                $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
                 Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                Get-Content -Path "merged_secrets_$GITHUB_SECRET_NAME.txt" | Write-Host
+                Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host
             }
         }
 
     - name: Update GitHub Secrets
       if: |
-        steps.check_vault.outputs['secret/myapp/frontend/dev_has_changed'] == 'true' ||
-        steps.check_vault.outputs['secret/myapp/frontend/stage_has_changed'] == 'true'
+        steps.check_vault.outputs.dev_has_changed == 'true' ||
+        steps.check_vault.outputs.stage_has_changed == 'true'
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
@@ -153,12 +161,18 @@ jobs:
         }
 
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
-            $has_changed = "$(steps.check_vault.outputs['$SECRET_PATH'_has_changed])"
+            # Determine the output name
+            $output_name = $SECRET_PATHS[$SECRET_PATH] -replace 'MERGED_', '' -replace '_SECRET', '_HAS_CHANGED'
+            
+            # Access the corresponding environment variable
+            $env_var = $output_name.ToUpper()
+            $has_changed = $env:$env_var
+
             if ($has_changed -eq 'true') {
                 $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
-                $MERGED_FILE = "merged_secrets_$GITHUB_SECRET_NAME.txt"
+                $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
 
-                Write-Host "Updating GitHub secret: $GITHUB_SECRET_NAME"
+                Write-Host "Updating GitHub secret: ${GITHUB_SECRET_NAME}"
 
                 if (Test-Path -Path $MERGED_FILE) {
                     $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
@@ -171,6 +185,6 @@ jobs:
 
                 # Set the merged secret using gh CLI
                 echo "$MERGED_SECRETS" | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
-                Write-Host "Secret '$GITHUB_SECRET_NAME' updated successfully."
+                Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
             }
         }
