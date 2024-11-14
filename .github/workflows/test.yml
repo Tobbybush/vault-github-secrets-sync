@@ -1,4 +1,4 @@
-name: Update GitHub Secrets
+name: Update GitHub Secrets 
 
 on:
   schedule:
@@ -12,6 +12,7 @@ jobs:
     steps:
     
     - name: Install jq
+      shell: pwsh
       run: |
         # Download jq.exe
         Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile $env:USERPROFILE\jq.exe
@@ -21,6 +22,7 @@ jobs:
         jq --version
 
     - name: Verify Vault Token
+      shell: pwsh
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
@@ -31,13 +33,14 @@ jobs:
       id: cache_hash
       uses: actions/cache@v3
       with:
-         path: |
-           .vault_data_hash_dev
-           .vault_data_hash_stage
-         key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
+        path: |
+          .vault_data_hash_dev
+          .vault_data_hash_stage
+        key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
 
     - name: Check Vault for Changes
       id: check_vault
+      shell: pwsh
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
@@ -77,12 +80,12 @@ jobs:
 
             if ($HASH -ne $OLD_HASH) {
               Write-Host "Vault data has changed for path: $SECRET_PATH"
-              $HASH | Out-File $HASH_FILE
+              $HASH | Out-File -FilePath $HASH_FILE
               # Set an output indicating this path has changed
-              echo "${$SECRET_PATHS[$SECRET_PATH]}=true" | Out-File $env:GITHUB_OUTPUT -Append
+              "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             } else {
               Write-Host "No changes in Vault data for path: $SECRET_PATH"
-              echo "${$SECRET_PATHS[$SECRET_PATH]}=false" | Out-File $env:GITHUB_OUTPUT -Append
+              "$($SECRET_PATHs[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             }
         }
 
@@ -91,6 +94,7 @@ jobs:
       if: |
         steps.check_vault.outputs.dev_has_changed == 'true' ||
         steps.check_vault.outputs.stage_has_changed == 'true'
+      shell: pwsh
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
@@ -152,6 +156,7 @@ jobs:
       if: |
         steps.check_vault.outputs.dev_has_changed == 'true' ||
         steps.check_vault.outputs.stage_has_changed == 'true'
+      shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
