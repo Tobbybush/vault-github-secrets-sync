@@ -1,4 +1,4 @@
-name: Update GitHub Secrets 
+name: Secrets Retrieval(secured)
 
 on:
   schedule:
