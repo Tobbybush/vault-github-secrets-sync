@@ -181,7 +181,7 @@ jobs:
                 $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                 $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
                 Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                # Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
+                Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
             }
         }
 
