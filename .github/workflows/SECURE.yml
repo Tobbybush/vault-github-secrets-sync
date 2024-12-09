@@ -74,6 +74,9 @@ jobs:
           "secret/myapp/frontend/dev" = "dev_has_changed"
           "secret/myapp/frontend/stage" = "stage_has_changed"
           "secret/myapp/frontend/prod" = "prod_has_changed"
+          "secret/myapp/backend/dev" = "dev_has_changed"
+          "secret/myapp/backend/stage" = "stage_has_changed"
+          "secret/myapp/backend/prod" = "prod_has_changed"
         }
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
             Write-Host "Processing Vault path: $SECRET_PATH"
@@ -126,6 +129,9 @@ jobs:
           "secret/myapp/frontend/dev" = "MERGED_DEV_SECRET"
           "secret/myapp/frontend/stage" = "MERGED_STAGE_SECRET"
           "secret/myapp/frontend/prod" = "MERGED_PROD_SECRET"
+          "secret/myapp/backend/dev" = "DEV_SECRET"
+          "secret/myapp/backend/stage" = "STAGE_SECRET"
+          "secret/myapp/backend/prod" = "PROD_SECRET"
         }
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
             # Determine the corresponding 'has_changed' environment variable
@@ -134,6 +140,12 @@ jobs:
             } elseif ($SECRET_PATH -eq "secret/myapp/frontend/stage") {
                 $has_changed = $env:STAGE_HAS_CHANGED
             } elseif ($SECRET_PATH -eq "secret/myapp/frontend/prod") {
+                $has_changed = $env:PROD_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/dev") {
+                $has_changed = $env:DEV_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/stage") {
+                $has_changed = $env:STAGE_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/prod") {
                 $has_changed = $env:PROD_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
@@ -201,6 +213,9 @@ jobs:
           "secret/myapp/frontend/dev" = "MERGED_DEV_SECRET"
           "secret/myapp/frontend/stage" = "MERGED_STAGE_SECRET"
           "secret/myapp/frontend/prod" = "MERGED_PROD_SECRET"
+           "secret/myapp/backend/dev" = "DEV_SECRET"
+          "secret/myapp/backend/stage" = "STAGE_SECRET"
+          "secret/myapp/backend/prod" = "PROD_SECRET"
         }
 
         foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
@@ -210,6 +225,12 @@ jobs:
             } elseif ($SECRET_PATH -eq "secret/myapp/frontend/stage") {
                 $has_changed = $env:STAGE_HAS_CHANGED
             } elseif ($SECRET_PATH -eq "secret/myapp/frontend/prod") {
+                $has_changed = $env:PROD_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/dev") {
+                $has_changed = $env:DEV_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/stage") {
+                $has_changed = $env:STAGE_HAS_CHANGED
+            } elseif ($SECRET_PATH -eq "secret/myapp/backend/prod") {
                 $has_changed = $env:PROD_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
