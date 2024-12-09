@@ -70,42 +70,48 @@ jobs:
       run: |
         $ErrorActionPreference = 'Stop'
         # Define the secret paths and their corresponding output names
-        $SECRET_PATHS = @{
-          "secret/myapp/frontend/dev" = "f_dev_has_changed"
-          "secret/myapp/frontend/stage" = "f_stage_has_changed"
-          "secret/myapp/frontend/prod" = "f_prod_has_changed"
-          "secret/myapp/backend/dev" = "b_dev_has_changed"
-          "secret/myapp/backend/stage" = "b_stage_has_changed"
-          "secret/myapp/backend/prod" = "b_prod_has_changed"
-        }
-        foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+        $SECRET_PATHS = @(
+          @{ Path = "secret/myapp/frontend/dev"; Output = "f_dev_has_changed" },
+          @{ Path = "secret/myapp/frontend/stage"; Output = "f_stage_has_changed" },
+          @{ Path = "secret/myapp/frontend/prod"; Output = "f_prod_has_changed" },
+          @{ Path = "secret/myapp/backend/dev"; Output = "b_dev_has_changed" },
+          @{ Path = "secret/myapp/backend/stage"; Output = "b_stage_has_changed" },
+          @{ Path = "secret/myapp/backend/prod"; Output = "b_prod_has_changed" }
+        )
+        
+        foreach ($SECRET in $SECRET_PATHS) {
+            $SECRET_PATH = $SECRET.Path
+            $OUTPUT_KEY = $SECRET.Output
+            
             Write-Host "Processing Vault path: $SECRET_PATH"
             try {
                 # Fetch the secrets from the current path
                 $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
-                Write-Host "Fetched data from $SECRET_PATH"
             } catch {
                 Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
                 exit 1
             }
+            
             # Compute a hash of the secret data
             $HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA_JSON))).Replace("-", "")
-            # Define hash file name based on path
-            $HASH_FILE = ".vault_data_hash_$($SECRET_PATH.Split('/')[-1])"
+            # Use the full path as part of the hash file name
+            $HASH_FILE = ".vault_data_hash_$($SECRET_PATH -replace '/', '_')"
+            
             # Read the old hash if it exists
             if (Test-Path $HASH_FILE) {
               $OLD_HASH = Get-Content $HASH_FILE
             } else {
               $OLD_HASH = ""
             }
+            
             if ($HASH -ne $OLD_HASH) {
               Write-Host "Vault data has changed for path: $SECRET_PATH"
               $HASH | Out-File -FilePath $HASH_FILE
               # Set an output indicating this path has changed
-              "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              echo "::set-output name=$OUTPUT_KEY::true"
             } else {
               Write-Host "No changes in Vault data for path: $SECRET_PATH"
-              "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              echo "::set-output name=$OUTPUT_KEY::false"
             }
         }
 
