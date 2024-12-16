@@ -1,4 +1,4 @@
-name: kvV2s Retrieval
+name: Secrets Retrieval
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update-kvV2s:
+  update-kvV2:
     runs-on: [self-hosted, Windows, x64]
     #environment: 
       #name: APPROVAL  # Place the environment at the job level.
@@ -35,7 +35,7 @@ jobs:
     - name: Authenticate GitHub CLI
       shell: powershell
       env:
-        GH_TOKEN: ${{ kvV2s.GH_PAT }}
+        GH_TOKEN: ${{ kvV2.GH_PAT }}
       run: |
         Write-Host "Authenticating GitHub CLI..."
         echo $env:GH_TOKEN | gh auth login --with-token
@@ -43,8 +43,8 @@ jobs:
     - name: Verify Vault Token
       shell: powershell
       env:
-        VAULT_ADDR: ${{ kvV2s.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ kvV2s.VAULT_TOKEN }}
+        VAULT_ADDR: ${{ kvV2.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ kvV2.VAULT_TOKEN }}
       run: |
         vault.exe token lookup -format=json | jq '.data'
     - name: Cache Vault Data Hashes
@@ -64,8 +64,8 @@ jobs:
       id: check_vault
       shell: powershell
       env:
-        VAULT_ADDR: ${{ kvV2s.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ kvV2s.VAULT_TOKEN }}
+        VAULT_ADDR: ${{ kvV2.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ kvV2.VAULT_TOKEN }}
       run: |
         $ErrorActionPreference = 'Stop'
         # Define the kvV2 paths and their corresponding output names
@@ -80,11 +80,11 @@ jobs:
         foreach ($kvV2_PATH in $kvV2_PATHS.Keys) {
             Write-Host "Processing Vault path: $kvV2_PATH"
             try {
-                # Fetch the kvV2s from the current path
+                # Fetch the kvV2 from the current path
                 $kvV2_DATA_JSON = vault.exe kv get -format=json $kvV2_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
                 Write-Host "Fetched data from $kvV2_PATH"
             } catch {
-                Write-Error "Failed to fetch kvV2s from Vault at path '$kvV2_PATH'. Error: $_"
+                Write-Error "Failed to fetch kvV2 from Vault at path '$kvV2_PATH'. Error: $_"
                 exit 1
             }
             # Compute a hash of the kvV2 data
@@ -108,8 +108,8 @@ jobs:
               "$($kvV2_PATHS[$kvV2_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             }
         }
-    - name: Fetch and Merge kvV2s from Vault
-      id: fetch_kvV2s
+    - name: Fetch and Merge kvV2 from Vault
+      id: fetch_kvV2
       if: |
         steps.check_vault.outputs.f_dev_has_changed == 'true' ||
         steps.check_vault.outputs.f_prod_has_changed == 'true' ||
@@ -119,8 +119,8 @@ jobs:
         steps.check_vault.outputs.b_stage_has_changed == 'true'
       shell: powershell
       env:
-        VAULT_ADDR: ${{ kvV2s.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ kvV2s.VAULT_TOKEN }}
+        VAULT_ADDR: ${{ kvV2.VAULT_ADDR }}
+        VAULT_TOKEN: ${{ kvV2.VAULT_TOKEN }}
         F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
         F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
         F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
@@ -158,32 +158,32 @@ jobs:
             }
             Write-Host "Processing kvV2 path: $kvV2_PATH with has_changed: $has_changed"
             if ($has_changed -eq 'true') {
-                Write-Host "Fetching and merging kvV2s for path: $kvV2_PATH"
+                Write-Host "Fetching and merging kvV2 for path: $kvV2_PATH"
                 try {
                     $kvV2_DATA = vault.exe kv get -format=json $kvV2_PATH | jq -r '.data.data' | ConvertFrom-Json
                     Write-Host "Fetched data from $kvV2_PATH"
                 } catch {
-                    Write-Error "Failed to fetch kvV2s from Vault for path '$kvV2_PATH'. Error: $_"
+                    Write-Error "Failed to fetch kvV2 from Vault for path '$kvV2_PATH'. Error: $_"
                     exit 1
                 }
-                # Initialize an empty string to hold the merged kvV2s
-                $MERGED_kvV2S = ""
+                # Initialize an empty string to hold the merged kvV2
+                $MERGED_kvV2 = ""
                 # Iterate over each kvV2 and append to the merged string
                 foreach ($property in $kvV2_DATA.PSObject.Properties) {
                     $key = $property.Name
                     $value = $property.Value
-                    $MERGED_kvV2S += "$key='$value'`n"  # Append each key-value pair with a newline
+                    $MERGED_kvV2 += "$key='$value'`n"  # Append each key-value pair with a newline
                 }
                 # Remove the trailing newline
-                $MERGED_kvV2S = $MERGED_kvV2S.TrimEnd("`n")
-                # Save the merged kvV2s to a file named based on the kvV2 name
+                $MERGED_kvV2 = $MERGED_kvV2.TrimEnd("`n")
+                # Save the merged kvV2 to a file named based on the kvV2 name
                 $GITHUB_kvV2_NAME = $kvV2_PATHS[$kvV2_PATH]
-                $MERGED_kvV2S | Out-File -FilePath "merged_kvV2s_${GITHUB_kvV2_NAME}.txt"
-                Write-Host "Combined kvV2s for ${GITHUB_kvV2_NAME}:"
-                Get-Content -Path "merged_kvV2s_${GITHUB_kvV2_NAME}.txt" | Write-Host  # Commented out to hide kvV2s
+                $MERGED_kvV2 | Out-File -FilePath "merged_kvV2_${GITHUB_kvV2_NAME}.txt"
+                Write-Host "Combined kvV2 for ${GITHUB_kvV2_NAME}:"
+                Get-Content -Path "merged_kvV2_${GITHUB_kvV2_NAME}.txt" | Write-Host  # Commented out to hide kvV2
             }
         }
-    - name: List Merged kvV2s Files
+    - name: List Merged kvV2 Files
       if: |
         steps.check_vault.outputs.f_dev_has_changed == 'true' ||
         steps.check_vault.outputs.f_prod_has_changed == 'true' ||
@@ -193,9 +193,9 @@ jobs:
         steps.check_vault.outputs.b_stage_has_changed == 'true'
       shell: powershell
       run: |
-        Write-Host "Listing merged kvV2s files:"
-        Get-ChildItem -Path . -Filter "merged_kvV2s_*.txt" | ForEach-Object { Write-Host $_.Name }
-    - name: Update GitHub kvV2s
+        Write-Host "Listing merged kvV2 files:"
+        Get-ChildItem -Path . -Filter "merged_kvV2_*.txt" | ForEach-Object { Write-Host $_.Name }
+    - name: Update GitHub kvV2
       if: |
         steps.check_vault.outputs.f_dev_has_changed == 'true' ||
         steps.check_vault.outputs.f_prod_has_changed == 'true' ||
@@ -205,7 +205,7 @@ jobs:
         steps.check_vault.outputs.b_stage_has_changed == 'true'
       shell: powershell
       env:
-        GH_TOKEN: ${{ kvV2s.GH_PAT }}
+        GH_TOKEN: ${{ kvV2.GH_PAT }}
         F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
         F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
         F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
@@ -214,7 +214,7 @@ jobs:
         B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
       run: |
         $ErrorActionPreference = 'Stop'
-        Write-Host "Starting Update GitHub kvV2s step..."
+        Write-Host "Starting Update GitHub kvV2 step..."
         # Verify gh CLI is authenticated
         gh auth status
         # Define the kvV2 paths and their corresponding GitHub kvV2 names
@@ -248,14 +248,14 @@ jobs:
             Write-Host "Processing kvV2 path: $kvV2_PATH with has_changed: $has_changed"
             if ($has_changed -eq 'true') {
                 $GITHUB_kvV2_NAME = $kvV2_PATHS[$kvV2_PATH]
-                $MERGED_FILE = "merged_kvV2s_${GITHUB_kvV2_NAME}.txt"
+                $MERGED_FILE = "merged_kvV2_${GITHUB_kvV2_NAME}.txt"
                 
                 Write-Host "Updating GitHub kvV2: ${GITHUB_kvV2_NAME}"
                 
                 if (Test-Path -Path $MERGED_FILE) {
-                    $MERGED_kvV2S = Get-Content -Path $MERGED_FILE -Raw
+                    $MERGED_kvV2 = Get-Content -Path $MERGED_FILE -Raw
                     Write-Host "Contents of ${MERGED_FILE}:"
-                    Write-Host "${MERGED_kvV2S}"  # Commented out to hide kvV2s
+                    Write-Host "${MERGED_kvV2}"  # Commented out to hide kvV2
                 } else {
                     Write-Error "${MERGED_FILE} file not found."
                     exit 1
@@ -264,7 +264,7 @@ jobs:
                 # Set the merged kvV2 using gh CLI
                 Write-Host "Executing gh kvV2 set for ${GITHUB_kvV2_NAME}..."
                 try {
-                    $MERGED_kvV2S | gh kvV2 set $GITHUB_kvV2_NAME --repo ${{ github.repository }} --body -
+                    $MERGED_kvV2 | gh kvV2 set $GITHUB_kvV2_NAME --repo ${{ github.repository }} --body -
                     Write-Host "kvV2 '${GITHUB_kvV2_NAME}' updated successfully."
                 } catch {
                     Write-Error "Failed to set kvV2 '${GITHUB_kvV2_NAME}'. Error: $_"
