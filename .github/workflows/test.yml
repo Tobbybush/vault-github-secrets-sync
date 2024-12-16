@@ -1,8 +1,8 @@
-name: Secrets Retrieval(secured)
+name: Secrets Retrieval
 
-#on:
-  #schedule:
-  #- cron: '0 */5 * * *' #runs every 5hrs
+on:
+  schedule:
+  - cron: '0 */5 * * *' #runs every 5hrs
    # - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:
 
@@ -255,7 +255,7 @@ jobs:
                 if (Test-Path -Path $MERGED_FILE) {
                     $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
                     Write-Host "Contents of ${MERGED_FILE}:"
-                    # Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
+                    Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
                 } else {
                     Write-Error "${MERGED_FILE} file not found."
                     exit 1
