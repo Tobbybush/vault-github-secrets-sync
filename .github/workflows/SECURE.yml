@@ -1,4 +1,4 @@
-name: Secrets Retrieval
+name: Secrets Retrieval2
 
 on:
   schedule:
@@ -43,13 +43,29 @@ jobs:
         Write-Host "Authenticating GitHub CLI..."
         echo $env:GH_TOKEN | gh auth login --with-token
         gh auth status
+
+    - name: Install Vault CLI
+      shell: powershell
+      run: |
+        # Download Vault CLI
+        Invoke-WebRequest -Uri https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_windows_amd64.zip -OutFile "$env:USERPROFILE\vault.zip"
+        # Unzip the file
+        Expand-Archive -Path "$env:USERPROFILE\vault.zip" -DestinationPath "$env:USERPROFILE"
+        # Move vault.exe to a directory included in PATH
+        Move-Item -Path "$env:USERPROFILE\vault.exe" -Destination "$env:USERPROFILE"
+        # Add to PATH for current session
+        $env:PATH += ";$env:USERPROFILE"
+        # Verify installation
+        vault.exe --version
+    
     - name: Verify Vault Token
       shell: powershell
       env:
         VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
         VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       run: |
-        .\vault.exe token lookup -format=json | jq '.data'
+        vault.exe token lookup -format=json | jq '.data'
+    
     - name: Cache Vault Data Hashes
       id: cache_hash
       uses: actions/cache@v3
