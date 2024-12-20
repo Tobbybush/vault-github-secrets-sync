@@ -10,8 +10,6 @@ jobs:
     runs-on: windows-latest
     env:
       VAULT_SKIP_VERIFY: true
-      BIN_DIR: "${{ env.USERPROFILE }}\bin"
-      HASH_DIR: ".vault_hashes"
       VAULT_VERSION: "1.15.0"
       JQ_VERSION: "1.6"
       GH_VERSION: "2.40.0"
@@ -23,20 +21,36 @@ jobs:
       - name: Set Up Directories
         shell: powershell
         run: |
+          # Define BinDir and HashDir within PowerShell
+          $BinDir = "$env:USERPROFILE\bin"
+          $HashDir = ".vault_hashes"
+
           # Create a dedicated directory for binaries if it doesn't exist
-          if (-Not (Test-Path -Path $env:BIN_DIR)) {
-            New-Item -ItemType Directory -Path $env:BIN_DIR
+          if (-Not (Test-Path -Path $BinDir)) {
+            New-Item -ItemType Directory -Path $BinDir | Out-Null
+            Write-Host "Created directory: $BinDir"
+          } else {
+            Write-Host "Directory already exists: $BinDir"
           }
+
           # Create a dedicated directory for hash files if it doesn't exist
-          if (-Not (Test-Path -Path $env:HASH_DIR)) {
-            New-Item -ItemType Directory -Path $env:HASH_DIR
+          if (-Not (Test-Path -Path $HashDir)) {
+            New-Item -ItemType Directory -Path $HashDir | Out-Null
+            Write-Host "Created directory: $HashDir"
+          } else {
+            Write-Host "Directory already exists: $HashDir"
           }
+
           # Append the BinDir to the GITHUB_PATH for global access
-          Add-Content -Path $env:GITHUB_PATH -Value $env:BIN_DIR
+          Add-Content -Path $env:GITHUB_PATH -Value $BinDir
+          
+          # Export BinDir and HashDir for use in subsequent steps
+          Write-Output "BIN_DIR=$BinDir" >> $env:GITHUB_ENV
+          Write-Output "HASH_DIR=$HashDir" >> $env:GITHUB_ENV
 
       - name: Cache Vault Data Hashes
         id: cache_hash
-        uses: actions/cache@v3
+        uses: actions/cache@v4.2.0
         with:
           path: ${{ env.HASH_DIR }}
           key: vault-data-hash
@@ -49,7 +63,7 @@ jobs:
           # Check if the hash directory is empty
           if ((Get-ChildItem -Path $env:HASH_DIR).Count -eq 0) {
             # Create a dummy file to ensure the cache is saved
-            New-Item -ItemType File -Path "$env:HASH_DIR\dummy.txt" -Force
+            New-Item -ItemType File -Path "$env:HASH_DIR\dummy.txt" -Force | Out-Null
             Write-Host "Created dummy hash file."
           } else {
             Write-Host "Hash directory already initialized."
@@ -71,7 +85,7 @@ jobs:
           }
 
       - name: Cache jq
-        uses: actions/cache@v3
+        uses: actions/cache@v4.2.0
         with:
           path: ${{ env.BIN_DIR }}/jq.exe
           key: jq-cli-${{ env.JQ_VERSION }}
@@ -100,7 +114,7 @@ jobs:
           }
 
       - name: Cache GitHub CLI
-        uses: actions/cache@v3
+        uses: actions/cache@v4.2.0
         with:
           path: ${{ env.BIN_DIR }}/gh.exe
           key: gh-cli-${{ env.GH_VERSION }}
@@ -136,7 +150,7 @@ jobs:
           }
 
       - name: Cache Vault CLI
-        uses: actions/cache@v3
+        uses: actions/cache@v4.2.0
         with:
           path: ${{ env.BIN_DIR }}/vault.exe
           key: vault-cli-${{ env.VAULT_VERSION }}
@@ -173,7 +187,7 @@ jobs:
               Write-Host "Processing Vault path: $SECRET_PATH"
               try {
                   # Fetch the secrets from the current path
-                  $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
+                  $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq.exe -r '.data.data' | ConvertTo-Json -Depth 100
                   Write-Host "Fetched data from $SECRET_PATH"
               } catch {
                   Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
@@ -219,7 +233,6 @@ jobs:
           B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
           B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
           B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
-          HASH_DIR: ${{ env.HASH_DIR }}
         run: |
           $ErrorActionPreference = 'Stop'
           # Define the secret paths and their corresponding GitHub secret names
@@ -253,7 +266,7 @@ jobs:
               if ($has_changed -eq 'true') {
                   Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
                   try {
-                      $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
+                      $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq.exe -r '.data.data' | ConvertFrom-Json
                       Write-Host "Fetched data from $SECRET_PATH"
                   } catch {
                       Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
