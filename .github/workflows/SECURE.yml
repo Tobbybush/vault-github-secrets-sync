@@ -3,7 +3,6 @@ name: Secrets Retrieval2
 on:
   schedule:
     - cron: '0 */5 * * *' # Runs every 5 hours
-    # - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:
 
 jobs:
@@ -11,48 +10,45 @@ jobs:
     runs-on: windows-latest
     env:
       VAULT_SKIP_VERIFY: true
+      BIN_DIR: "$env:USERPROFILE\bin"
+      VAULT_VERSION: "1.15.0"
 
     steps:
       - name: Set Up Directories
         shell: powershell
         run: |
-          # Create a dedicated directory for binaries
-          $BinDir = "$env:USERPROFILE\bin"
-          if (-Not (Test-Path -Path $BinDir)) {
-            New-Item -ItemType Directory -Path $BinDir
+          # Create a dedicated directory for binaries if it doesn't exist
+          if (-Not (Test-Path -Path $env:BIN_DIR)) {
+            New-Item -ItemType Directory -Path $env:BIN_DIR
           }
           # Append the BinDir to the GITHUB_PATH for global access
-          Add-Content -Path $env:GITHUB_PATH -Value $BinDir
+          Add-Content -Path $env:GITHUB_PATH -Value $env:BIN_DIR
 
-      - name: Install jq
+      - name: Cache Vault CLI
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.BIN_DIR }}
+          key: vault-cli-${{ env.VAULT_VERSION }}
+          restore-keys: |
+            vault-cli-
+
+      - name: Install Vault CLI
         shell: powershell
         run: |
-          $BinDir = "$env:USERPROFILE\bin"
-          # Download jq.exe
-          Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile "$BinDir\jq.exe"
-          # Verify installation
-          & "$BinDir\jq.exe" --version
-
-      - name: Install GitHub CLI
-        shell: powershell
-        run: |
-          $BinDir = "$env:USERPROFILE\bin"
-          # Download GitHub CLI installer
-          Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.40.0/gh_2.40.0_windows_amd64.msi -OutFile "$BinDir\gh_installer.msi"
-          # Install GitHub CLI silently
-          Start-Process msiexec.exe -ArgumentList "/i", "$BinDir\gh_installer.msi", "/qn", "/norestart" -Wait
-          # Verify installation
-          gh --version
-
-      - name: Authenticate GitHub CLI
-        shell: powershell
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          Write-Host "Authenticating GitHub CLI..."
-          echo $env:GH_TOKEN | gh auth login --with-token
-          gh auth status
-
+          if (-Not (Test-Path "$env:BIN_DIR\vault.exe")) {
+            Write-Host "Vault CLI not found in cache. Downloading..."
+            # Download Vault CLI
+            Invoke-WebRequest -Uri "https://releases.hashicorp.com/vault/${{ env.VAULT_VERSION }}/vault_${{ env.VAULT_VERSION }}_windows_amd64.zip" -OutFile "$env:BIN_DIR\vault.zip"
+            # Unzip the file
+            Expand-Archive -Path "$env:BIN_DIR\vault.zip" -DestinationPath $env:BIN_DIR
+            # Remove the zip file after extraction
+            Remove-Item -Path "$env:BIN_DIR\vault.zip"
+            # Verify installation
+            & "$env:BIN_DIR\vault.exe" --version
+          } else {
+            Write-Host "Vault CLI found in cache."
+            & "$env:BIN_DIR\vault.exe" --version
+          }
 
       - name: Verify Vault Token
         shell: powershell
