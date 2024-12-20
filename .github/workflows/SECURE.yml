@@ -3,7 +3,6 @@ name: Secrets Retrieval2
 on:
   schedule:
     - cron: '0 */5 * * *' # Runs every 5 hours
-    # - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:
 
 jobs:
@@ -11,7 +10,7 @@ jobs:
     runs-on: windows-latest
     env:
       VAULT_SKIP_VERIFY: true
-      BIN_DIR: "$env:USERPROFILE\bin"
+      BIN_DIR: "${{ env.USERPROFILE }}\bin"
       HASH_DIR: ".vault_hashes"
       VAULT_VERSION: "1.15.0"
       JQ_VERSION: "1.6"
@@ -340,14 +339,14 @@ jobs:
                   Write-Host "Unknown secret path: $SECRET_PATH"
                   continue
               }
-              
+
               Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
               if ($has_changed -eq 'true') {
                   $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                   $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
-                  
+
                   Write-Host "Updating GitHub secret: ${GITHUB_SECRET_NAME}"
-                  
+
                   if (Test-Path -Path $MERGED_FILE) {
                       $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
                       Write-Host "Contents of ${MERGED_FILE}:"
@@ -356,7 +355,7 @@ jobs:
                       Write-Error "${MERGED_FILE} file not found."
                       exit 1
                   }
-                  
+
                   # Set the merged secret using gh CLI
                   Write-Host "Executing gh secret set for ${GITHUB_SECRET_NAME}..."
                   try {
