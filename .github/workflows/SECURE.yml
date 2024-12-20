@@ -2,294 +2,303 @@ name: Secrets Retrieval2
 
 on:
   schedule:
-  - cron: '0 */5 * * *' #runs every 5hrs
-   # - cron: '0 * * * *'  # Runs every hour
+    - cron: '0 */5 * * *' # Runs every 5 hours
+    # - cron: '0 * * * *'  # Runs every hour
   workflow_dispatch:
 
 jobs:
   update-secrets:
     runs-on: windows-latest
-    #[self-hosted, Windows, x64]
-    #environment: 
-      #name: APPROVAL  # Place the environment at the job level.
-    env:  # Set environment variable globally
+    env:
       VAULT_SKIP_VERIFY: true
 
     steps:
-    
-    - name: Install jq
-      shell: powershell
-      run: |
-        # Download jq.exe
-        Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile "$env:USERPROFILE\jq.exe"
-        # Add the directory to PATH for the current session
-        $env:PATH += ";$env:USERPROFILE"
-        # Verify installation
-        jq --version
-    - name: Install GitHub CLI
-      shell: powershell
-      run: |
-        # Download GitHub CLI installer
-        Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.40.0/gh_2.40.0_windows_amd64.msi -OutFile "$env:USERPROFILE\gh_installer.msi"
-        # Install GitHub CLI silently
-        Start-Process msiexec.exe -ArgumentList "/i", "$env:USERPROFILE\gh_installer.msi", "/qn", "/norestart" -Wait
-        # Verify installation
-        gh --version
-    - name: Authenticate GitHub CLI
-      shell: powershell
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        Write-Host "Authenticating GitHub CLI..."
-        echo $env:GH_TOKEN | gh auth login --with-token
-        gh auth status
+      - name: Set Up Directories
+        shell: powershell
+        run: |
+          # Create a dedicated directory for binaries
+          $BinDir = "$env:USERPROFILE\bin"
+          if (-Not (Test-Path -Path $BinDir)) {
+            New-Item -ItemType Directory -Path $BinDir
+          }
+          # Append the BinDir to the GITHUB_PATH for global access
+          Add-Content -Path $env:GITHUB_PATH -Value $BinDir
 
-    - name: Install Vault CLI
-      shell: powershell
-      run: |
-        # Download Vault CLI
-        Invoke-WebRequest -Uri https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_windows_amd64.zip -OutFile "$env:USERPROFILE\vault.zip"
-        # Unzip the file
-        Expand-Archive -Path "$env:USERPROFILE\vault.zip" -DestinationPath "$env:USERPROFILE"
-        # Move vault.exe to a directory included in PATH
-        Move-Item -Path "$env:USERPROFILE\vault.exe" -Destination "$env:USERPROFILE"
-        # Add to PATH for current session
-        $env:PATH += ";$env:USERPROFILE"
-        # Verify installation
-        vault.exe --version
-    
-    - name: Verify Vault Token
-      shell: powershell
-      env:
-        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
-      run: |
-        vault.exe token lookup -format=json | jq '.data'
-    
-    - name: Cache Vault Data Hashes
-      id: cache_hash
-      uses: actions/cache@v3
-      with:
-        path: |
-          .vault_data_hash_devf
-          .vault_data_hash_stagef
-          .vault_data_hash_prodf
-          .vault_data_hash_devb
-          .vault_data_hash_stageb
-          .vault_data_hash_prodb
-        key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
+      - name: Install jq
+        shell: powershell
+        run: |
+          $BinDir = "$env:USERPROFILE\bin"
+          # Download jq.exe
+          Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile "$BinDir\jq.exe"
+          # Verify installation
+          & "$BinDir\jq.exe" --version
 
-    - name: Check Vault for Changes
-      id: check_vault
-      shell: powershell
-      env:
-        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        # Define the secret paths and their corresponding output names
-        $SECRET_PATHS = @{
-          "kvV2/Vault-POC/frontend/dev" = "f_dev_has_changed"
-          "kvV2/Vault-POC/frontend/stage" = "f_stage_has_changed"
-          "kvV2/Vault-POC/frontend/prod" = "f_prod_has_changed"
-          "kvV2/Vault-POC/backend/dev" = "b_dev_has_changed"
-          "kvV2/Vault-POC/backend/stage" = "b_stage_has_changed"
-          "kvV2/Vault-POC/backend/prod" = "b_prod_has_changed"
-        }
-        foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
-            Write-Host "Processing Vault path: $SECRET_PATH"
-            try {
-                # Fetch the secrets from the current path
-                $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
-                Write-Host "Fetched data from $SECRET_PATH"
-            } catch {
-                Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
-                exit 1
-            }
-            # Compute a hash of the secret data
-            $HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA_JSON))).Replace("-", "")
-            # Define hash file name based on path
-            $HASH_FILE = ".vault_data_hash_$($SECRET_PATH -replace '/', '_')"
-            #$HASH_FILE = ".vault_data_hash_$($SECRET_PATH.Split('/')[-1])"
-            # Read the old hash if it exists
-            if (Test-Path $HASH_FILE) {
-              $OLD_HASH = Get-Content $HASH_FILE
-            } else {
-              $OLD_HASH = ""
-            }
-            if ($HASH -ne $OLD_HASH) {
-              Write-Host "Vault data has changed for path: $SECRET_PATH"
-              $HASH | Out-File -FilePath $HASH_FILE
-              # Set an output indicating this path has changed
-              "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            } else {
-              Write-Host "No changes in Vault data for path: $SECRET_PATH"
-              "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            }
-        }
-    - name: Fetch and Merge Secrets from Vault
-      id: fetch_secrets
-      if: |
-        steps.check_vault.outputs.f_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.f_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.f_stage_has_changed == 'true' ||
-        steps.check_vault.outputs.b_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.b_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.b_stage_has_changed == 'true'
-      shell: powershell
-      env:
-        VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
-        F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
-        F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
-        F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
-        B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
-        B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
-        B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        # Define the secret paths and their corresponding GitHub secret names
-        $SECRET_PATHS = @{
-          "kvV2/Vault-POC/frontend/dev" = "F_DEV_SECRET"
-          "kvV2/Vault-POC/frontend/stage" = "F_STAGE_SECRET"
-          "kvV2/Vault-POC/frontend/prod" = "F_PROD_SECRET"
-          "kvV2/Vault-POC/backend/dev" = "B_DEV_SECRET"
-          "kvV2/Vault-POC/backend/stage" = "B_STAGE_SECRET"
-          "kvV2/Vault-POC/backend/prod" = "B_PROD_SECRET"
-        }
-        foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
-            # Determine the corresponding 'has_changed' environment variable
-            if ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/dev") {
-                $has_changed = $env:F_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/stage") {
-                $has_changed = $env:F_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/prod") {
-                $has_changed = $env:F_PROD_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
-                $has_changed = $env:B_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/stage") {
-                $has_changed = $env:B_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/prod") {
-                $has_changed = $env:B_PROD_HAS_CHANGED
-            } else {
-                Write-Host "Unknown secret path: $SECRET_PATH"
-                continue
-            }
-            Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
-            if ($has_changed -eq 'true') {
-                Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
-                try {
-                    $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
-                    Write-Host "Fetched data from $SECRET_PATH"
-                } catch {
-                    Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
-                    exit 1
-                }
-                # Initialize an empty string to hold the merged secrets
-                $MERGED_SECRETS = ""
-                # Iterate over each secret and append to the merged string
-                foreach ($property in $SECRET_DATA.PSObject.Properties) {
-                    $key = $property.Name
-                    $value = $property.Value
-                    $MERGED_SECRETS += "$key='$value'`n"  # Append each key-value pair with a newline
-                }
-                # Remove the trailing newline
-                $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
-                # Save the merged secrets to a file named based on the secret name
-                $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
-                $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
-                Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                #Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
-            }
-        }
-    - name: List Merged Secrets Files
-      if: |
-        steps.check_vault.outputs.f_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.f_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.f_stage_has_changed == 'true' ||
-        steps.check_vault.outputs.b_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.b_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.b_stage_has_changed == 'true'
-      shell: powershell
-      run: |
-        Write-Host "Listing merged secrets files:"
-        Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
-    - name: Update GitHub Secrets
-      if: |
-        steps.check_vault.outputs.f_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.f_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.f_stage_has_changed == 'true' ||
-        steps.check_vault.outputs.b_dev_has_changed == 'true' ||
-        steps.check_vault.outputs.b_prod_has_changed == 'true' ||
-        steps.check_vault.outputs.b_stage_has_changed == 'true'
-      shell: powershell
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-        F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
-        F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
-        F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
-        B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
-        B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
-        B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        Write-Host "Starting Update GitHub Secrets step..."
-        # Verify gh CLI is authenticated
-        gh auth status
-        # Define the secret paths and their corresponding GitHub secret names
-        $SECRET_PATHS = @{
-          "kvV2/Vault-POC/frontend/dev" = "F_DEV_SECRET"
-          "kvV2/Vault-POC/frontend/stage" = "F_STAGE_SECRET"
-          "kvV2/Vault-POC/frontend/prod" = "F_PROD_SECRET"
-          "kvV2/Vault-POC/backend/dev" = "B_DEV_SECRET"
-          "kvV2/Vault-POC/backend/stage" = "B_STAGE_SECRET"
-          "kvV2/Vault-POC/backend/prod" = "B_PROD_SECRET"
-        }
-        foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
-            # Determine the corresponding 'has_changed' environment variable
-            if ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/dev") {
-                $has_changed = $env:F_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/stage") {
-                $has_changed = $env:F_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/prod") {
-                $has_changed = $env:F_PROD_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
-                $has_changed = $env:B_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/stage") {
-                $has_changed = $env:B_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/prod") {
-                $has_changed = $env:B_PROD_HAS_CHANGED
-            } else {
-                Write-Host "Unknown secret path: $SECRET_PATH"
-                continue
-            }
-            
-            Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
-            if ($has_changed -eq 'true') {
-                $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
-                $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
-                
-                Write-Host "Updating GitHub secret: ${GITHUB_SECRET_NAME}"
-                
-                if (Test-Path -Path $MERGED_FILE) {
-                    $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
-                    Write-Host "Contents of ${MERGED_FILE}:"
-                    # Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
-                } else {
-                    Write-Error "${MERGED_FILE} file not found."
-                    exit 1
-                }
-                
-                # Set the merged secret using gh CLI
-                Write-Host "Executing gh secret set for ${GITHUB_SECRET_NAME}..."
-                try {
-                    $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
-                    Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
-                } catch {
-                    Write-Error "Failed to set secret '${GITHUB_SECRET_NAME}'. Error: $_"
-                    exit 1
-                }
-            } else {
-                Write-Host "No changes detected for secret path: $SECRET_PATH"
-            }
-        }
+      - name: Install GitHub CLI
+        shell: powershell
+        run: |
+          $BinDir = "$env:USERPROFILE\bin"
+          # Download GitHub CLI installer
+          Invoke-WebRequest -Uri https://github.com/cli/cli/releases/download/v2.40.0/gh_2.40.0_windows_amd64.msi -OutFile "$BinDir\gh_installer.msi"
+          # Install GitHub CLI silently
+          Start-Process msiexec.exe -ArgumentList "/i", "$BinDir\gh_installer.msi", "/qn", "/norestart" -Wait
+          # Verify installation
+          gh --version
+
+      - name: Authenticate GitHub CLI
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          Write-Host "Authenticating GitHub CLI..."
+          echo $env:GH_TOKEN | gh auth login --with-token
+          gh auth status
+
+      - name: Install Vault CLI
+        shell: powershell
+        run: |
+          $BinDir = "$env:USERPROFILE\bin"
+          # Download Vault CLI
+          Invoke-WebRequest -Uri https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_windows_amd64.zip -OutFile "$BinDir\vault.zip"
+          # Unzip the file
+          Expand-Archive -Path "$BinDir\vault.zip" -DestinationPath $BinDir
+          # Remove the zip file after extraction
+          Remove-Item -Path "$BinDir\vault.zip"
+          # Verify installation
+          & "$BinDir\vault.exe" --version
+
+      - name: Verify Vault Token
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: |
+            & "vault.exe" token lookup -format=json | & "jq.exe" '.data'
+  
+      
+      - name: Cache Vault Data Hashes
+        id: cache_hash
+        uses: actions/cache@v3
+        with:
+          path: |
+            .vault_data_hash_devf
+            .vault_data_hash_stagef
+            .vault_data_hash_prodf
+            .vault_data_hash_devb
+            .vault_data_hash_stageb
+            .vault_data_hash_prodb
+          key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
+  
+      - name: Check Vault for Changes
+        id: check_vault
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Define the secret paths and their corresponding output names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/frontend/dev" = "f_dev_has_changed"
+            "kvV2/Vault-POC/frontend/stage" = "f_stage_has_changed"
+            "kvV2/Vault-POC/frontend/prod" = "f_prod_has_changed"
+            "kvV2/Vault-POC/backend/dev" = "b_dev_has_changed"
+            "kvV2/Vault-POC/backend/stage" = "b_stage_has_changed"
+            "kvV2/Vault-POC/backend/prod" = "b_prod_has_changed"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              Write-Host "Processing Vault path: $SECRET_PATH"
+              try {
+                  # Fetch the secrets from the current path
+                  $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertTo-Json -Depth 100
+                  Write-Host "Fetched data from $SECRET_PATH"
+              } catch {
+                  Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
+                  exit 1
+              }
+              # Compute a hash of the secret data
+              $HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA_JSON))).Replace("-", "")
+              # Define hash file name based on path
+              $HASH_FILE = ".vault_data_hash_$($SECRET_PATH -replace '/', '_')"
+              #$HASH_FILE = ".vault_data_hash_$($SECRET_PATH.Split('/')[-1])"
+              # Read the old hash if it exists
+              if (Test-Path $HASH_FILE) {
+                $OLD_HASH = Get-Content $HASH_FILE
+              } else {
+                $OLD_HASH = ""
+              }
+              if ($HASH -ne $OLD_HASH) {
+                Write-Host "Vault data has changed for path: $SECRET_PATH"
+                $HASH | Out-File -FilePath $HASH_FILE
+                # Set an output indicating this path has changed
+                "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              } else {
+                Write-Host "No changes in Vault data for path: $SECRET_PATH"
+                "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              }
+          }
+      - name: Fetch and Merge Secrets from Vault
+        id: fetch_secrets
+        if: |
+          steps.check_vault.outputs.f_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.f_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.f_stage_has_changed == 'true' ||
+          steps.check_vault.outputs.b_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.b_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.b_stage_has_changed == 'true'
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
+          F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
+          F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
+          B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
+          B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
+          B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Define the secret paths and their corresponding GitHub secret names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/frontend/dev" = "F_DEV_SECRET"
+            "kvV2/Vault-POC/frontend/stage" = "F_STAGE_SECRET"
+            "kvV2/Vault-POC/frontend/prod" = "F_PROD_SECRET"
+            "kvV2/Vault-POC/backend/dev" = "B_DEV_SECRET"
+            "kvV2/Vault-POC/backend/stage" = "B_STAGE_SECRET"
+            "kvV2/Vault-POC/backend/prod" = "B_PROD_SECRET"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              # Determine the corresponding 'has_changed' environment variable
+              if ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/dev") {
+                  $has_changed = $env:F_DEV_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/stage") {
+                  $has_changed = $env:F_STAGE_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/prod") {
+                  $has_changed = $env:F_PROD_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
+                  $has_changed = $env:B_DEV_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/stage") {
+                  $has_changed = $env:B_STAGE_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/prod") {
+                  $has_changed = $env:B_PROD_HAS_CHANGED
+              } else {
+                  Write-Host "Unknown secret path: $SECRET_PATH"
+                  continue
+              }
+              Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
+              if ($has_changed -eq 'true') {
+                  Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
+                  try {
+                      $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq -r '.data.data' | ConvertFrom-Json
+                      Write-Host "Fetched data from $SECRET_PATH"
+                  } catch {
+                      Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
+                      exit 1
+                  }
+                  # Initialize an empty string to hold the merged secrets
+                  $MERGED_SECRETS = ""
+                  # Iterate over each secret and append to the merged string
+                  foreach ($property in $SECRET_DATA.PSObject.Properties) {
+                      $key = $property.Name
+                      $value = $property.Value
+                      $MERGED_SECRETS += "$key='$value'`n"  # Append each key-value pair with a newline
+                  }
+                  # Remove the trailing newline
+                  $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
+                  # Save the merged secrets to a file named based on the secret name
+                  $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
+                  $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
+                  Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
+                  #Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
+              }
+          }
+      - name: List Merged Secrets Files
+        if: |
+          steps.check_vault.outputs.f_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.f_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.f_stage_has_changed == 'true' ||
+          steps.check_vault.outputs.b_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.b_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.b_stage_has_changed == 'true'
+        shell: powershell
+        run: |
+          Write-Host "Listing merged secrets files:"
+          Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
+      - name: Update GitHub Secrets
+        if: |
+          steps.check_vault.outputs.f_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.f_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.f_stage_has_changed == 'true' ||
+          steps.check_vault.outputs.b_dev_has_changed == 'true' ||
+          steps.check_vault.outputs.b_prod_has_changed == 'true' ||
+          steps.check_vault.outputs.b_stage_has_changed == 'true'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          F_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.f_dev_has_changed }}
+          F_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.f_stage_has_changed }}
+          F_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.f_prod_has_changed }}
+          B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
+          B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
+          B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "Starting Update GitHub Secrets step..."
+          # Verify gh CLI is authenticated
+          gh auth status
+          # Define the secret paths and their corresponding GitHub secret names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/frontend/dev" = "F_DEV_SECRET"
+            "kvV2/Vault-POC/frontend/stage" = "F_STAGE_SECRET"
+            "kvV2/Vault-POC/frontend/prod" = "F_PROD_SECRET"
+            "kvV2/Vault-POC/backend/dev" = "B_DEV_SECRET"
+            "kvV2/Vault-POC/backend/stage" = "B_STAGE_SECRET"
+            "kvV2/Vault-POC/backend/prod" = "B_PROD_SECRET"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              # Determine the corresponding 'has_changed' environment variable
+              if ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/dev") {
+                  $has_changed = $env:F_DEV_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/stage") {
+                  $has_changed = $env:F_STAGE_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/frontend/prod") {
+                  $has_changed = $env:F_PROD_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
+                  $has_changed = $env:B_DEV_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/stage") {
+                  $has_changed = $env:B_STAGE_HAS_CHANGED
+              } elseif ($SECRET_PATH -eq "kvV2/Vault-POC/backend/prod") {
+                  $has_changed = $env:B_PROD_HAS_CHANGED
+              } else {
+                  Write-Host "Unknown secret path: $SECRET_PATH"
+                  continue
+              }
+              
+              Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
+              if ($has_changed -eq 'true') {
+                  $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
+                  $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
+                  
+                  Write-Host "Updating GitHub secret: ${GITHUB_SECRET_NAME}"
+                  
+                  if (Test-Path -Path $MERGED_FILE) {
+                      $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
+                      Write-Host "Contents of ${MERGED_FILE}:"
+                      # Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
+                  } else {
+                      Write-Error "${MERGED_FILE} file not found."
+                      exit 1
+                  }
+                  
+                  # Set the merged secret using gh CLI
+                  Write-Host "Executing gh secret set for ${GITHUB_SECRET_NAME}..."
+                  try {
+                      $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
+                      Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
+                  } catch {
+                      Write-Error "Failed to set secret '${GITHUB_SECRET_NAME}'. Error: $_"
+                      exit 1
+                  }
+              } else {
+                  Write-Host "No changes detected for secret path: $SECRET_PATH"
+              }
+          }
