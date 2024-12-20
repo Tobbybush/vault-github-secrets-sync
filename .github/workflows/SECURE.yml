@@ -53,18 +53,6 @@ jobs:
           echo $env:GH_TOKEN | gh auth login --with-token
           gh auth status
 
-      - name: Install Vault CLI
-        shell: powershell
-        run: |
-          $BinDir = "$env:USERPROFILE\bin"
-          # Download Vault CLI
-          Invoke-WebRequest -Uri https://releases.hashicorp.com/vault/1.15.0/vault_1.15.0_windows_amd64.zip -OutFile "$BinDir\vault.zip"
-          # Unzip the file
-          Expand-Archive -Path "$BinDir\vault.zip" -DestinationPath $BinDir
-          # Remove the zip file after extraction
-          Remove-Item -Path "$BinDir\vault.zip"
-          # Verify installation
-          & "$BinDir\vault.exe" --version
 
       - name: Verify Vault Token
         shell: powershell
