@@ -81,7 +81,10 @@ jobs:
             .vault_data_hash_devb
             .vault_data_hash_stageb
             .vault_data_hash_prodb
-          key: vault-data-hash-${{ hashFiles('.vault_data_hash_*') }}
+          key: vault-data-hash
+          restore-keys: |
+            vault-data-hash
+
   
       - name: Check Vault for Changes
         id: check_vault
