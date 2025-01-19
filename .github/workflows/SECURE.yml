@@ -286,7 +286,7 @@ jobs:
                   $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                   $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
                   Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                  #Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
+                  Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
               }
           }
 
@@ -363,7 +363,7 @@ jobs:
                   if (Test-Path -Path $MERGED_FILE) {
                       $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
                       Write-Host "Contents of ${MERGED_FILE}:"
-                      # Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
+                      Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
                   } else {
                       Write-Error "${MERGED_FILE} file not found."
                       exit 1
@@ -382,3 +382,6 @@ jobs:
                   Write-Host "No changes detected for secret path: $SECRET_PATH"
               }
           }
+
+
+#289 366
