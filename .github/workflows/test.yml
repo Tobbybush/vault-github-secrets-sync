@@ -119,31 +119,31 @@ jobs:
           Write-Host "Authenticating GitHub CLI..."
           echo $env:GH_TOKEN | gh auth login --with-token
           gh auth status
-      - name: Install Vault CLI
-        shell: powershell
-        run: |
-          # Check if vault.exe already exists to prevent re-downloading
-          if (-Not (Test-Path "$env:BIN_DIR\vault.exe")) {
-            Write-Host "Vault CLI not found. Downloading..."
-            # Download Vault CLI
-            Invoke-WebRequest -Uri "https://releases.hashicorp.com/vault/${{ env.VAULT_VERSION }}/vault_${{ env.VAULT_VERSION }}_windows_amd64.zip" -OutFile "$env:BIN_DIR\vault.zip"
-            # Unzip the file
-            Expand-Archive -Path "$env:BIN_DIR\vault.zip" -DestinationPath $env:BIN_DIR
-            # Remove the zip file after extraction
-            Remove-Item -Path "$env:BIN_DIR\vault.zip"
-            # Verify installation
-            & "$env:BIN_DIR\vault.exe" --version
-          } else {
-            Write-Host "Vault CLI already installed."
-            & "$env:BIN_DIR\vault.exe" --version
-          }
-      - name: Cache Vault CLI
-        uses: actions/cache@v4.2.0
-        with:
-          path: ${{ env.BIN_DIR }}/vault.exe
-          key: vault-cli-${{ env.VAULT_VERSION }}
-          restore-keys: |
-            vault-cli-
+      # - name: Install Vault CLI
+      #   shell: powershell
+      #   run: |
+      #     # Check if vault.exe already exists to prevent re-downloading
+      #     if (-Not (Test-Path "$env:BIN_DIR\vault.exe")) {
+      #       Write-Host "Vault CLI not found. Downloading..."
+      #       # Download Vault CLI
+      #       Invoke-WebRequest -Uri "https://releases.hashicorp.com/vault/${{ env.VAULT_VERSION }}/vault_${{ env.VAULT_VERSION }}_windows_amd64.zip" -OutFile "$env:BIN_DIR\vault.zip"
+      #       # Unzip the file
+      #       Expand-Archive -Path "$env:BIN_DIR\vault.zip" -DestinationPath $env:BIN_DIR
+      #       # Remove the zip file after extraction
+      #       Remove-Item -Path "$env:BIN_DIR\vault.zip"
+      #       # Verify installation
+      #       & "$env:BIN_DIR\vault.exe" --version
+      #     } else {
+      #       Write-Host "Vault CLI already installed."
+      #       & "$env:BIN_DIR\vault.exe" --version
+      #     }
+      # - name: Cache Vault CLI
+      #   uses: actions/cache@v4.2.0
+      #   with:
+      #     path: ${{ env.BIN_DIR }}/vault.exe
+      #     key: vault-cli-${{ env.VAULT_VERSION }}
+      #     restore-keys: |
+      #       vault-cli-
       - name: Verify Vault Token
         shell: powershell
         env:
@@ -199,6 +199,12 @@ jobs:
                 "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
               }
           }
+
+      - name: Debug Cache
+        run: |
+          echo "Cache restored. Checking contents of ${{ env.HASH_DIR }}:"
+          ls ${{ env.HASH_DIR }}
+
       - name: Fetch and Merge Secrets from Vault
         id: fetch_secrets
         if: |
