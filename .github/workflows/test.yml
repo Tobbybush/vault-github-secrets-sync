@@ -204,9 +204,6 @@ jobs:
         id: fetch_secrets
         if: |
           steps.check_vault.outputs.b_dev_has_changed == 'true'
-          # steps.check_vault.outputs.b_pre-prod_has_changed == 'true' ||
-          # steps.check_vault.outputs.b_stage_has_changed == 'true' ||
-          # steps.check_vault.outputs.b_prod_has_changed == 'true'
         shell: powershell
         env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
@@ -220,20 +217,11 @@ jobs:
           # Define the secret paths and their corresponding GitHub secret names
           $SECRET_PATHS = @{
             "kvV2/retail-pos/backend/dev" = "ENV_DEV"
-            kvV2/retail-pos/backend/stage" = "ENV_STAGE"
-            # "kvV2/retail-pos/backend/pre-prod" = "ENV_PRE_PROD"
-            # "kvV2/retail-pos/backend/prod" = "ENV_PROD"
           }
           foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
               # Determine the corresponding 'has_changed' environment variable
-              if ($SECRET_PATH -eq "kvV2/retail-pos/backend/dev") {
+            if ($SECRET_PATH -eq "kvV2/retail-pos/backend/dev") {
                 $has_changed = $env:B_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/stage") {
-                $has_changed = $env:B_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/pre-prod") {
-                $has_changed = $env:B_PRE-PROD_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/prod") {
-                $has_changed = $env:B_PROD_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
                 continue
@@ -262,32 +250,23 @@ jobs:
                   $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
                   $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
                   Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                  #Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
+                  Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
               }
           }
       - name: List Merged Secrets Files
         if: |
-          steps.check_vault.outputs.b_dev_has_changed == 'true' ||
-          steps.check_vault.outputs.b_pre-prod_has_changed == 'true' ||
-          steps.check_vault.outputs.b_stage_has_changed == 'true' ||
-          steps.check_vault.outputs.b_prod_has_changed == 'true'
+          steps.check_vault.outputs.b_dev_has_changed == 'true' 
         shell: powershell
         run: |
           Write-Host "Listing merged secrets files:"
           Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
       - name: Update GitHub Secrets
         if: |
-          steps.check_vault.outputs.b_dev_has_changed == 'true' ||
-          steps.check_vault.outputs.b_pre-prod_has_changed == 'true' ||
-          steps.check_vault.outputs.b_stage_has_changed == 'true' ||
-          steps.check_vault.outputs.b_prod_has_changed == 'true'
+          steps.check_vault.outputs.b_dev_has_changed == 'true'
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
-          B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
-          B_PRE-PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_pre-prod_has_changed }}
-          B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "Starting Update GitHub Secrets step..."
@@ -296,20 +275,11 @@ jobs:
           # Define the secret paths and their corresponding GitHub secret names
           $SECRET_PATHS = @{
             "kvV2/retail-pos/backend/dev" = "ENV_DEV"
-            "kvV2/retail-pos/backend/stage" = "ENV_STAGE"
-            "kvV2/retail-pos/backend/pre-prod" = "ENV_PRE_PROD"
-            "kvV2/retail-pos/backend/prod" = "ENV_PROD"
           }
           foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
               # Determine the corresponding 'has_changed' environment variable
             if ($SECRET_PATH -eq "kvV2/retail-pos/backend/dev") {
                 $has_changed = $env:B_DEV_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/stage") {
-                $has_changed = $env:B_STAGE_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/pre-prod") {
-                $has_changed = $env:B_PRE-PROD_HAS_CHANGED
-            } elseif ($SECRET_PATH -eq "kvV2/retail-pos/backend/prod") {
-                $has_changed = $env:B_PROD_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
                 continue
@@ -322,7 +292,7 @@ jobs:
                   if (Test-Path -Path $MERGED_FILE) {
                       $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
                       Write-Host "Contents of ${MERGED_FILE}:"
-                      # Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
+                      Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
                   } else {
                       Write-Error "${MERGED_FILE} file not found."
                       exit 1
