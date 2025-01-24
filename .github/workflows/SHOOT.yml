@@ -245,7 +245,7 @@ jobs:
                 $value = $property.Value
                 
                 # Check if value contains spaces or special characters that need quoting
-                if ($value -match '[\s"`$&|<>;]') {
+                if ($value -match '[\s"`$&|<>;(){}^]') {
                     # Quote the value if it contains spaces or special characters
                     $value = "`"$value`""
                 }
