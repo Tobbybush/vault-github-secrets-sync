@@ -236,9 +236,11 @@ jobs:
                   } catch {
                       Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
                       exit 1
-                  }# Initialize an empty string to hold the merged secrets
+                  }
+                  # Initialize an empty string to hold the merged secrets
                   $MERGED_SECRETS = ""
-                  # Iterate over each secret and append to the merged stringforeach ($property in $SECRET_DATA.PSObject.Properties) {
+                  # Iterate over each secret and append to the merged string
+                  foreach ($property in $SECRET_DATA.PSObject.Properties) {
                       $key = $property.Name
                       $value = $property.Value
                       $MERGED_SECRETS += "$key=$value`n"  # No quotes added around the value
