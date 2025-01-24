@@ -162,7 +162,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           # Define the secret paths and their corresponding output names
           $SECRET_PATHS = @{
-            "kvV2/smart-store/frontend/dev" = "b_dev_has_changed"
+            "kvV2/Vault-POC/backend/dev" = "b_dev_has_changed"
           }
           foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
               Write-Host "Processing Vault path: $SECRET_PATH"
@@ -216,11 +216,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           # Define the secret paths and their corresponding GitHub secret names
           $SECRET_PATHS = @{
-            "kvV2/smart-store/frontend/dev" = "ENV_DEV"
+            "kvV2/Vault-POC/backend/dev" = "ENV_DEV"
           }
           foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
               # Determine the corresponding 'has_changed' environment variable
-            if ($SECRET_PATH -eq "kvV2/smart-store/frontend/dev") {
+            if ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
                 $has_changed = $env:B_DEV_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
@@ -295,11 +295,11 @@ jobs:
           gh auth status
           # Define the secret paths and their corresponding GitHub secret names
           $SECRET_PATHS = @{
-            "kvV2/smart-store/frontend/dev" = "ENV_DEV"
+            "kvV2/Vault-POC/backend/dev" = "ENV_DEV"
           }
           foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
               # Determine the corresponding 'has_changed' environment variable
-            if ($SECRET_PATH -eq "kvV2/smart-store/frontend/dev") {
+            if ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
                 $has_changed = $env:B_DEV_HAS_CHANGED
             } else {
                 Write-Host "Unknown secret path: $SECRET_PATH"
