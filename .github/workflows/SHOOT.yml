@@ -251,15 +251,18 @@ jobs:
               #         Write-Host "Value starts and ends with single quotes, trimming: $value"
               #     }
 
-              
-                # Check if value contains spaces or special characters that need quoting
-                if ($value -match '[\s"`$&|<>;(){}^]') {
-                    # Quote the value if it contains spaces or special characters
-                    $value = "`"$value`""
-                }
-                
-                # Append the key and value to the merged string
-                $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
+            # Check if the key matches specific patterns (case-insensitive)
+            if ($key -match '^(URL|password|path)$') {
+                # Always quote the value for these keys
+                $value = "`"$value`""
+            } 
+            # elseif ($value -match '[\s"`$&|<>;(){}^]') {
+            #     # Quote the value if it contains spaces or special characters
+            #     $value = "`"$value`""
+            #}
+            
+            # Append the key and value to the merged string
+            $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
             }    
             }
 
