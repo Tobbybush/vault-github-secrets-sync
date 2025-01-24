@@ -254,6 +254,9 @@ jobs:
                 $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
             }    
             }
+
+            # Debugging: Show the merged secrets before saving
+            Write-Host "Merged secrets: $MERGED_SECRETS"
             
             # Remove the trailing newline
             $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
