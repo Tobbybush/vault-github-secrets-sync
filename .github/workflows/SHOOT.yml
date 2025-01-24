@@ -1,0 +1,322 @@
+name: Secrets Retrieval TEST
+
+on:
+  schedule:
+    - cron: '0 */5 * * *' # Runs every 5 hours
+  workflow_dispatch:
+
+jobs:
+  update-secrets:
+    runs-on: windows-latest
+    env:
+      VAULT_SKIP_VERIFY: true
+      VAULT_VERSION: "1.15.0"
+      JQ_VERSION: "1.6"
+      GH_VERSION: "2.40.0"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set Up Directories
+        shell: powershell
+        run: |
+          # Define BinDir and HashDir within PowerShell
+          $BinDir = "$env:USERPROFILE\bin"
+          $HashDir = ".vault_hashes"
+          # Create a dedicated directory for binaries if it doesn't exist
+          if (-Not (Test-Path -Path $BinDir)) {
+            New-Item -ItemType Directory -Path $BinDir | Out-Null
+            Write-Host "Created directory: $BinDir"
+          } else {
+            Write-Host "Directory already exists: $BinDir"
+          }
+          # Create a dedicated directory for hash files if it doesn't exist
+          if (-Not (Test-Path -Path $HashDir)) {
+            New-Item -ItemType Directory -Path $HashDir | Out-Null
+            Write-Host "Created directory: $HashDir"
+          } else {
+            Write-Host "Directory already exists: $HashDir"
+          }
+          # Append the BinDir to the GITHUB_PATH for global access
+          Add-Content -Path $env:GITHUB_PATH -Value $BinDir
+          
+          # Export BinDir and HashDir for use in subsequent steps
+          Write-Output "BIN_DIR=$BinDir" >> $env:GITHUB_ENV
+          Write-Output "HASH_DIR=$HashDir" >> $env:GITHUB_ENV
+      - name: Cache Vault Data Hashes
+        id: cache_hash
+        uses: actions/cache@v4.2.0
+        with:
+          path: ${{ env.HASH_DIR }}
+          key: vault-data-hash
+          restore-keys: |
+            vault-data-hash
+      - name: Initialize Hash Directory (First Run)
+        shell: powershell
+        run: |
+          # Check if the hash directory is empty
+          if ((Get-ChildItem -Path $env:HASH_DIR).Count -eq 0) {
+            # Create a dummy file to ensure the cache is saved
+            New-Item -ItemType File -Path "$env:HASH_DIR\dummy.txt" -Force | Out-Null
+            Write-Host "Created dummy hash file."
+          } else {
+            Write-Host "Hash directory already initialized."
+          }
+      - name: Install jq
+        shell: powershell
+        run: |
+          # Check if jq.exe already exists to prevent re-downloading
+          if (-Not (Test-Path "$env:BIN_DIR\jq.exe")) {
+            Write-Host "jq.exe not found. Downloading..."
+            # Download jq.exe
+            Invoke-WebRequest -Uri "https://github.com/stedolan/jq/releases/download/jq-${{ env.JQ_VERSION }}/jq-win64.exe" -OutFile "$env:BIN_DIR\jq.exe"
+            # Verify installation
+            & "$env:BIN_DIR\jq.exe" --version
+          } else {
+            Write-Host "jq.exe already installed."
+            & "$env:BIN_DIR\jq.exe" --version
+          }
+      - name: Cache jq
+        uses: actions/cache@v4.2.0
+        with:
+          path: ${{ env.BIN_DIR }}/jq.exe
+          key: jq-cli-${{ env.JQ_VERSION }}
+          restore-keys: |
+            jq-cli-
+      - name: Install GitHub CLI
+        shell: powershell
+        run: |
+          # Check if gh.exe already exists to prevent re-downloading
+          if (-Not (Test-Path "$env:BIN_DIR\gh.exe")) {
+            Write-Host "GitHub CLI not found. Downloading and installing..."
+            # Download GitHub CLI installer
+            Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v${{ env.GH_VERSION }}/gh_${{ env.GH_VERSION }}_windows_amd64.msi" -OutFile "$env:BIN_DIR\gh_installer.msi"
+            # Install GitHub CLI silently
+            Start-Process msiexec.exe -ArgumentList "/i", "$env:BIN_DIR\gh_installer.msi", "/qn", "/norestart" -Wait
+            # Move gh.exe to BIN_DIR
+            Move-Item -Path "C:\Program Files\GitHub CLI\gh.exe" -Destination "$env:BIN_DIR\gh.exe" -Force
+            # Remove the installer
+            Remove-Item -Path "$env:BIN_DIR\gh_installer.msi"
+            # Verify installation
+            & "$env:BIN_DIR\gh.exe" --version
+          } else {
+            Write-Host "GitHub CLI already installed."
+            & "$env:BIN_DIR\gh.exe" --version
+          }
+      - name: Cache GitHub CLI
+        uses: actions/cache@v4.2.0
+        with:
+          path: ${{ env.BIN_DIR }}/gh.exe
+          key: gh-cli-${{ env.GH_VERSION }}
+          restore-keys: |
+            gh-cli-
+      - name: Authenticate GitHub CLI
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          Write-Host "Authenticating GitHub CLI..."
+          echo $env:GH_TOKEN | gh auth login --with-token
+          gh auth status
+      - name: Install Vault CLI
+        shell: powershell
+        run: |
+          # Check if vault.exe already exists to prevent re-downloading
+          if (-Not (Test-Path "$env:BIN_DIR\vault.exe")) {
+            Write-Host "Vault CLI not found. Downloading..."
+            # Download Vault CLI
+            Invoke-WebRequest -Uri "https://releases.hashicorp.com/vault/${{ env.VAULT_VERSION }}/vault_${{ env.VAULT_VERSION }}_windows_amd64.zip" -OutFile "$env:BIN_DIR\vault.zip"
+            # Unzip the file
+            Expand-Archive -Path "$env:BIN_DIR\vault.zip" -DestinationPath $env:BIN_DIR
+            # Remove the zip file after extraction
+            Remove-Item -Path "$env:BIN_DIR\vault.zip"
+            # Verify installation
+            & "$env:BIN_DIR\vault.exe" --version
+          } else {
+            Write-Host "Vault CLI already installed."
+            & "$env:BIN_DIR\vault.exe" --version
+          }
+      - name: Cache Vault CLI
+        uses: actions/cache@v4.2.0
+        with:
+          path: ${{ env.BIN_DIR }}/vault.exe
+          key: vault-cli-${{ env.VAULT_VERSION }}
+          restore-keys: |
+            vault-cli-
+      - name: Verify Vault Token
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: |
+          & "vault.exe" token lookup -format=json | & "jq.exe" '.data'
+      - name: Check Vault for Changes
+        id: check_vault
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          HASH_DIR: ${{ env.HASH_DIR }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Define the secret paths and their corresponding output names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/backend/dev" = "b_dev_has_changed"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              Write-Host "Processing Vault path: $SECRET_PATH"
+              try {
+                  # Fetch the secrets from the current path
+                  $SECRET_DATA_JSON = vault.exe kv get -format=json $SECRET_PATH | jq.exe -r '.data.data' | ConvertTo-Json -Depth 100
+                  Write-Host "Fetched data from $SECRET_PATH"
+              } catch {
+                  Write-Error "Failed to fetch secrets from Vault at path '$SECRET_PATH'. Error: $_"
+                  exit 1
+              }
+              
+              $SECRET_DATA_JSON = $SECRET_DATA_JSON | ConvertFrom-Json | ConvertTo-Json -Depth 100
+              # Compute a hash of the secret data
+              $HASH = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($SECRET_DATA_JSON))).Replace("-", "")
+              # Define hash file name based on path
+              $HASH_FILE = "$env:HASH_DIR\.vault_data_hash_$($SECRET_PATH -replace '/', '_')"
+              # Read the old hash if it exists
+              if (Test-Path $HASH_FILE) {
+                $OLD_HASH = Get-Content $HASH_FILE
+              } else {
+                $OLD_HASH = ""
+              }
+              if ($HASH -ne $OLD_HASH) {
+                Write-Host "Vault data has changed for path: $SECRET_PATH"
+                $HASH | Out-File -FilePath $HASH_FILE
+                # Set an output indicating this path has changed
+                "$($SECRET_PATHS[$SECRET_PATH])=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              } else {
+                Write-Host "No changes in Vault data for path: $SECRET_PATH"
+                "$($SECRET_PATHS[$SECRET_PATH])=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              }
+          }
+      - name: Debug Cache
+        run: |
+          echo "Cache restored. Checking contents of ${{ env.HASH_DIR }}:"
+          ls ${{ env.HASH_DIR }}
+      - name: Fetch and Merge Secrets from Vault
+        id: fetch_secrets
+        if: |
+          steps.check_vault.outputs.b_dev_has_changed == 'true'
+        shell: powershell
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
+          # B_STAGE_HAS_CHANGED: ${{ steps.check_vault.outputs.b_stage_has_changed }}
+          # B_PRE-PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_pre-prod_has_changed }}
+          # B_PROD_HAS_CHANGED: ${{ steps.check_vault.outputs.b_prod_has_changed }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Define the secret paths and their corresponding GitHub secret names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/backend/dev" = "ENV_DEV"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              # Determine the corresponding 'has_changed' environment variable
+            if ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
+                $has_changed = $env:B_DEV_HAS_CHANGED
+            } else {
+                Write-Host "Unknown secret path: $SECRET_PATH"
+                continue
+            }
+              Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
+              if ($has_changed -eq 'true') {
+                  Write-Host "Fetching and merging secrets for path: $SECRET_PATH"
+                  try {
+                      $SECRET_DATA = vault.exe kv get -format=json $SECRET_PATH | jq.exe -r '.data.data' | ConvertFrom-Json
+                      Write-Host "Fetched data from $SECRET_PATH"
+                  } catch {
+                      Write-Error "Failed to fetch secrets from Vault for path '$SECRET_PATH'. Error: $_"
+                      exit 1
+                  }
+                  # Initialize an empty string to hold the merged secrets
+            $MERGED_SECRETS = ""
+            
+            # Iterate over each secret and append to the merged string with appropriate escaping or quoting
+            foreach ($property in $SECRET_DATA.PSObject.Properties) {
+                $key = $property.Name
+                $value = $property.Value
+                
+                # Check if value contains spaces or special characters that need quoting
+                if ($value -match '[\s"`$&|<>;]') {
+                    # Quote the value if it contains spaces or special characters
+                    $value = "`"$value`""
+                }
+                
+                # Append the key and value to the merged string
+                $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
+            }    
+            }
+            
+            # Remove the trailing newline
+            $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
+            
+            # Save the merged secrets to a file named based on the secret name
+            $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
+            $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
+            Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
+          }
+      - name: List Merged Secrets Files
+        if: |
+          steps.check_vault.outputs.b_dev_has_changed == 'true' 
+        shell: powershell
+        run: |
+          Write-Host "Listing merged secrets files:"
+          Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
+      - name: Update GitHub Secrets
+        if: |
+          steps.check_vault.outputs.b_dev_has_changed == 'true'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          B_DEV_HAS_CHANGED: ${{ steps.check_vault.outputs.b_dev_has_changed }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "Starting Update GitHub Secrets step..."
+          # Verify gh CLI is authenticated
+          gh auth status
+          # Define the secret paths and their corresponding GitHub secret names
+          $SECRET_PATHS = @{
+            "kvV2/Vault-POC/backend/dev" = "ENV_DEV"
+          }
+          foreach ($SECRET_PATH in $SECRET_PATHS.Keys) {
+              # Determine the corresponding 'has_changed' environment variable
+            if ($SECRET_PATH -eq "kvV2/Vault-POC/backend/dev") {
+                $has_changed = $env:B_DEV_HAS_CHANGED
+            } else {
+                Write-Host "Unknown secret path: $SECRET_PATH"
+                continue
+            }
+              Write-Host "Processing secret path: $SECRET_PATH with has_changed: $has_changed"
+              if ($has_changed -eq 'true') {
+                  $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
+                  $MERGED_FILE = "merged_secrets_${GITHUB_SECRET_NAME}.txt"
+                  Write-Host "Updating GitHub secret: ${GITHUB_SECRET_NAME}"
+                  if (Test-Path -Path $MERGED_FILE) {
+                      $MERGED_SECRETS = Get-Content -Path $MERGED_FILE -Raw
+                      Write-Host "Contents of ${MERGED_FILE}:"
+                      Write-Host "${MERGED_SECRETS}"  # Commented out to hide secrets
+                  } else {
+                      Write-Error "${MERGED_FILE} file not found."
+                      exit 1
+                  }
+                  # Set the merged secret using gh CLI
+                  Write-Host "Executing gh secret set for ${GITHUB_SECRET_NAME}..."
+                  try {
+                      $MERGED_SECRETS | gh secret set $GITHUB_SECRET_NAME --repo ${{ github.repository }} --body -
+                      Write-Host "Secret '${GITHUB_SECRET_NAME}' updated successfully."
+                  } catch {
+                      Write-Error "Failed to set secret '${GITHUB_SECRET_NAME}'. Error: $_"
+                      exit 1
+                  }
+              } else {
+                  Write-Host "No changes detected for secret path: $SECRET_PATH"
+              }
+          }
