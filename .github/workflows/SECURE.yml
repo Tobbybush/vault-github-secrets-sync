@@ -238,21 +238,31 @@ jobs:
                       exit 1
                   }
                   # Initialize an empty string to hold the merged secrets
-                  $MERGED_SECRETS = ""
-                  # Iterate over each secret and append to the merged string
-                  foreach ($property in $SECRET_DATA.PSObject.Properties) {
-                      $key = $property.Name
-                      $value = $property.Value
-                      $MERGED_SECRETS += "$key=$value`n"  # No quotes added around the value
-                  }
-                  # Remove the trailing newline
-                  $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
-                  # Save the merged secrets to a file named based on the secret name
-                  $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
-                  $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
-                  Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
-                  Get-Content -Path "merged_secrets_${GITHUB_SECRET_NAME}.txt" | Write-Host  # Commented out to hide secrets
-              }
+            $MERGED_SECRETS = ""
+            
+            # Iterate over each secret and append to the merged string with appropriate escaping or quoting
+            foreach ($property in $SECRET_DATA.PSObject.Properties) {
+                $key = $property.Name
+                $value = $property.Value
+                
+                # Check if value contains spaces or special characters that need quoting
+                if ($value -match '[\s"`$&|<>;]') {
+                    # Quote the value if it contains spaces or special characters
+                    $value = "`"$value`""
+                }
+                
+                # Append the key and value to the merged string
+                $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
+            }    
+            }
+            
+            # Remove the trailing newline
+            $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
+            
+            # Save the merged secrets to a file named based on the secret name
+            $GITHUB_SECRET_NAME = $SECRET_PATHS[$SECRET_PATH]
+            $MERGED_SECRETS | Out-File -FilePath "merged_secrets_${GITHUB_SECRET_NAME}.txt"
+            Write-Host "Combined secrets for ${GITHUB_SECRET_NAME}:"
           }
       - name: List Merged Secrets Files
         if: |
