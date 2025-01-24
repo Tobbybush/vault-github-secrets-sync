@@ -2,7 +2,7 @@ name: Secrets Retrieval TEST
 
 on:
   schedule:
-    - cron: '0 */5 * * *' # Runs every 5 hours
+    - cron: '0 */20 * * *' # Runs every 5 hours
   workflow_dispatch:
 
 jobs:
@@ -243,7 +243,15 @@ jobs:
             foreach ($property in $SECRET_DATA.PSObject.Properties) {
                 $key = $property.Name
                 $value = $property.Value
-                
+
+              # # Handle value enclosed in single quotes, remove the single quotes
+              #     if ($value.StartsWith("'") -and $value.EndsWith("'")) {
+              #         # Remove the leading and trailing single quotes
+              #         $value = $value.Trim("'")
+              #         Write-Host "Value starts and ends with single quotes, trimming: $value"
+              #     }
+
+              
                 # Check if value contains spaces or special characters that need quoting
                 if ($value -match '[\s"`$&|<>;(){}^]') {
                     # Quote the value if it contains spaces or special characters
