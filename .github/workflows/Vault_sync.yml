@@ -20,7 +20,7 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
       GITHUB_REPO: ${{ github.repository }}
       path: "kvV2/Vault-POC/backend/dev"
-      
+
     steps:
     # Step 1: Get all secrets from Vault
     - name: Get secrets from Vault
@@ -37,13 +37,27 @@ jobs:
         echo "Secrets retrieved from Vault: "
         echo "${{ steps.vault-secrets.outputs.secrets }}" | jq 'keys'  # Print out the keys of the secrets
 
-    # # Step 2: Print the secret values (not recommended for sensitive data)
-    # - name: Print secrets values
-    #   run: |
-    #     echo "Secrets retrieved from Vault: "
-    #     echo "${{ steps.vault-secrets.outputs.secrets }}"
+    # Use jq to parse the JSON and format the output
+    - name: parse the JSON and format 
+      run: | 
+        jq -r 'to_entries | .[] | if (.key | test("URL|password|path"; "i")) 
+        then "\(.key)=\"\(.value)\"" 
+        else "\(.key)=\(.value)" 
+        end' "$INPUT_FILE" > github_secrets.txt
+    
+    # Step 4: Update GitHub Secrets
+    - name: Update GitHub Secrets
+      run: |
+        echo "Updating GitHub Secrets..."
+        while IFS= read -r line; do
+          key=$(echo "$line" | cut -d '=' -f1)
+          value=$(echo "$line" | cut -d '=' -f2-)
+          echo "Updating secret: $key"
+          gh secret set "$key" --body "$value"
+        done < merged_secrets.env
+        echo "GitHub Secrets updated successfully."
 
-    # Step 2: Create a .env file
+    # Step 3: Create a .env file
     - name: Create env file
       if: github.ref == 'refs/heads/frontend_dev'
       run: |
