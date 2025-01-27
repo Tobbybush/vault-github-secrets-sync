@@ -26,7 +26,7 @@ jobs:
     #     sudo apt-get install -y jq curl
 
     - name: Sync Secrets from Vault to GitHub
-      uses: hashicorp/vault@v0.8.0
+      uses: hashicorp/actions-vault@v2.0.0
       env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
@@ -37,7 +37,7 @@ jobs:
     
     # Step 2: Get all secrets from Vault
     - name: Get secrets from Vault
-      uses: hashicorp/vault@v0.1
+      uses: hashicorp/actions-vault@v2.0.0
       with:
         vault-url: ${{ secrets.VAULT_ADDR }}
         token: ${{ secrets.VAULT_TOKEN }}
