@@ -37,7 +37,7 @@ jobs:
     
     # Step 2: Get all secrets from Vault
     - name: Get secrets from Vault
-      uses: hashicorp/vault@v0.8.0
+      uses: hashicorp/vault@v0.1
       with:
         vault-url: ${{ secrets.VAULT_ADDR }}
         token: ${{ secrets.VAULT_TOKEN }}
