@@ -1,0 +1,50 @@
+name: Sync Secrets from Vault
+
+on:
+  push:
+    branches:
+      - develop
+      - stage
+  # schedule:
+  #   - cron: "*/10 * * * *" # Runs every 10 minutes
+  # workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
+
+jobs:
+  sync-secrets:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    # - name: Install Dependencies
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y jq curl
+
+    - name: Sync Secrets from Vault to GitHub
+      uses: my-action/repository@v1
+      env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          VAULT_SECRETS: ${{ steps.check-vault.outputs.secrets }}
+     
+    
+    # Step 2: Get all secrets from Vault
+    - name: Get secrets from Vault
+      uses: hashicorp/vault@v1
+      with:
+        vault-url: ${{ secrets.VAULT_ADDR }}
+        token: ${{ secrets.VAULT_TOKEN }}
+        secret-path: ${{ secrets.secret_path }}
+
+    # Step 3: Create a .env file
+    - name: Create env file
+      if: github.ref == 'refs/heads/frontend_dev'
+      run: |
+        echo "${{ steps.vault-secrets.outputs.secret }}" > .env
+
+      
