@@ -3,7 +3,7 @@ name: Sync Secrets from Vault
 on:
   push:
     branches:
-      - develop
+      - dev
       - stage
   # schedule:
   #   - cron: "*/10 * * * *" # Runs every 10 minutes
