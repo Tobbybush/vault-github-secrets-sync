@@ -30,6 +30,12 @@ jobs:
         token: ${{ secrets.VAULT_TOKEN }}
         path: ${{ secrets.SECRET_PATH }}
 
+    # Step 2: Print out the keys of the secrets to confirm what was retrieved (safe for debugging)
+    - name: Print secrets keys
+      run: |
+        echo "Secrets retrieved from Vault: "
+        echo "${{ steps.vault-secrets.outputs.secrets }}" | jq 'keys'  # Print out the keys of the secrets
+
     # Step 2: Create a .env file
     - name: Create env file
       if: github.ref == 'refs/heads/frontend_dev'
