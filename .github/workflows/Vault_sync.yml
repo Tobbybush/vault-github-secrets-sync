@@ -15,35 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VAULT_VERSION: "1.15.0"
+      VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+      VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_REPO: ${{ github.repository }}
+      
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
-
-    # - name: Install Dependencies
-    #   run: |
-    #     sudo apt-get update
-    #     sudo apt-get install -y jq curl
-
-    - name: Sync Secrets from Vault to GitHub
-      uses: hashicorp/actions-vault@v2.0.0
-      env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_REPO: ${{ github.repository }}
-          VAULT_SECRETS: ${{ steps.check-vault.outputs.secrets }}
-     
-    
-    # Step 2: Get all secrets from Vault
+    # Step 1: Get all secrets from Vault
     - name: Get secrets from Vault
-      uses: hashicorp/actions-vault@v2.0.0
+      uses: hashicorp/vault@v0.1
       with:
         vault-url: ${{ secrets.VAULT_ADDR }}
         token: ${{ secrets.VAULT_TOKEN }}
         secret-path: ${{ secrets.secret_path }}
 
-    # Step 3: Create a .env file
+    # Step 2: Create a .env file
     - name: Create env file
       if: github.ref == 'refs/heads/frontend_dev'
       run: |
