@@ -70,6 +70,7 @@ jobs:
         uses: hashicorp/vault-action@v2
         with:
           url: ${{ secrets.VAULT_ADDR }}
+          tlsSkipVerify: true
           method: token
           token: ${{ secrets.VAULT_TOKEN }}
           secrets: |
