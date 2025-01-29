@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - dev
-      - stage
-  # schedule:
-  #   - cron: "*/10 * * * *" # Runs every 10 minutes
-  # workflow_dispatch: # Allows manual trigger
   workflow_dispatch:
 
 jobs:
@@ -19,48 +15,38 @@ jobs:
       VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       GH_PAT: ${{ secrets.GH_PAT }}
       GITHUB_REPO: ${{ github.repository }}
-      path: "kvV2/Vault-POC/backend/dev"
+      SECRET_PATH: "kvV2/Vault-POC/backend/dev"
 
     steps:
-    # Step 1: Get all secrets from Vault
-    - name: Get secrets from Vault
-      uses: hashicorp/vault-action@v2.4.1
-      with:
-        url: ${{ secrets.VAULT_ADDR }}
-        token: ${{ secrets.VAULT_TOKEN }}
-        path: "kvV2/Vault-POC/backend/dev"
-              
+      # Step 1: Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    # Step 2: Print out the keys of the secrets to confirm what was retrieved (safe for debugging)
-    - name: Print secrets keys
-      run: |
-        echo "Secrets retrieved from Vault: "
-        echo "${{ steps.vault-secrets.outputs.secrets }}" | jq 'keys'  # Print out the keys of the secrets
+      # Step 2: Get secrets from Vault
+      - name: Get secrets from Vault
+        id: vault-secrets
+        uses: hashicorp/vault-action@v2.4.1
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          token: ${{ secrets.VAULT_TOKEN }}
+          path: ${{ env.SECRET_PATH }}
+          method: token
+          exportEnv: true  # Exports secrets as environment variables
 
-    # Use jq to parse the JSON and format the output
-    - name: parse the JSON and format 
-      run: | 
-        jq -r 'to_entries | .[] | if (.key | test("URL|password|path"; "i")) 
-        then "\(.key)=\"\(.value)\"" 
-        else "\(.key)=\(.value)" 
-        end' "$INPUT_FILE" > github_secrets.txt
-    
-    # Step 4: Update GitHub Secrets
-    - name: Update GitHub Secrets
-      run: |
-        echo "Updating GitHub Secrets..."
-        while IFS= read -r line; do
-          key=$(echo "$line" | cut -d '=' -f1)
-          value=$(echo "$line" | cut -d '=' -f2-)
-          echo "Updating secret: $key"
-          gh secret set "$key" --body "$value"
-        done < merged_secrets.env
-        echo "GitHub Secrets updated successfully."
+      # Step 3: Print retrieved secret keys (SAFE LOGGING)
+      - name: Print retrieved secret keys
+        run: |
+          echo "Secrets successfully retrieved from Vault!"
+          echo "Available secret keys:"
+          env | grep 'VAULT_' | cut -d= -f1  # Prints only the keys
 
-    # Step 3: Create a .env file
-    - name: Create env file
-      if: github.ref == 'refs/heads/frontend_dev'
-      run: |
-        echo "${{ steps.vault-secrets.outputs.secret }}" > .env
+      # Step 4: Create a .env file
+      - name: Create .env file
+        run: |
+          echo "Saving secrets to .env file..."
+          env | grep 'VAULT_' | sed 's/^VAULT_//' > .env
+          echo ".env file created successfully!"
 
-      
+      # Step 5: Confirm successful execution
+      - name: Confirm success
+        run: echo "Vault secrets have been successfully retrieved and saved."
