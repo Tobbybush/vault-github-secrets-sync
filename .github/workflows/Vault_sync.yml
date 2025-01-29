@@ -34,25 +34,57 @@ jobs:
         run: |
           vault token lookup -format=json -tls-skip-verify | jq '.data'
       
-      # Step 2: Get Secrets from Vault
-      - name: Get Secrets from Vault
-        id: vault-secrets
-        uses: hashicorp/vault-action@v2.4.1
-        with:
-          url: ${{ secrets.VAULT_ADDR }}
-          token: ${{ secrets.VAULT_TOKEN }}
-          path: ${{ env.SECRET_PATH }}
-        continue-on-error: false
+      # # Step 2: Get Secrets from Vault
+      # - name: Get Secrets from Vault
+      #   id: vault-secrets
+      #   uses: hashicorp/vault-action@v2.4.1
+      #   with:
+      #     url: ${{ secrets.VAULT_ADDR }}
+      #     token: ${{ secrets.VAULT_TOKEN }}
+      #     path: ${{ env.SECRET_PATH }}
+      #   continue-on-error: false
 
-      # Step 3: Verify if Secrets were Retrieved
+      # - name: Import Secrets
+      #   uses: hashicorp/vault-action
+      #   with:
+      #     url: https://vault-enterprise.mycompany.com:8200
+      #     method: token
+      #     token: ${{ secrets.VAULT_TOKEN }}
+      #     # secret-path: ${{ secrets.VAULT_SECRET_PATH }}
+      #     secrets: |
+      #         "kvV2/smart-store/frontend/dev"
+
+      # # Step 3: Verify if Secrets were Retrieved
+      # - name: Verify Retrieved Secrets
+      #   run: |
+      #     echo "Checking if secrets were retrieved..."
+      #     if [ -z "${{ steps.vault-secrets.outputs.secret }}" ]; then
+      #       echo "Failed to retrieve secrets from Vault."
+      #       exit 1
+      #     else
+      #       echo "Secrets retrieved successfully!"
+      #     fi
+
+      - name: Import Secrets
+        id: vault-secrets  # Add an ID to reference this step
+        uses: hashicorp/vault-action@v2
+        with:
+          url: https://vault-enterprise.mycompany.com:8200
+          method: token
+          token: ${{ secrets.VAULT_TOKEN }}
+          secrets: |
+            kvV2/smart-store/frontend/dev accessKey | AWS_ACCESS_KEY_ID ;
+            kvV2/smart-store/frontend/dev secretKey | AWS_SECRET_ACCESS_KEY
+  
+    # Step 3: Verify if Secrets were Retrieved
       - name: Verify Retrieved Secrets
         run: |
           echo "Checking if secrets were retrieved..."
-          if [ -z "${{ steps.vault-secrets.outputs.secret }}" ]; then
-            echo "Failed to retrieve secrets from Vault."
-            exit 1
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+          echo "Failed to retrieve secrets from Vault."
+          exit 1
           else
-            echo "Secrets retrieved successfully!"
+          echo "Secrets retrieved successfully!"
           fi
 
       # Step 4: Save Secrets in JSON Format
