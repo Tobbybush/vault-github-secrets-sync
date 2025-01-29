@@ -32,7 +32,7 @@ jobs:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
         run: |
-          vault token lookup -format=json | jq '.data'
+          vault token lookup -format=json -tls-skip-verify | jq '.data'
       
       # Step 2: Get Secrets from Vault
       - name: Get Secrets from Vault
