@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - dev
-  workflow_dispatch:
+      - stage
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   sync-secrets:
@@ -18,35 +19,61 @@ jobs:
       SECRET_PATH: "kvV2/Vault-POC/backend/dev"
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
+        run: echo "✅ Repository checked out successfully."
 
-      # Step 2: Get secrets from Vault
-      - name: Get secrets from Vault
+      # Step 2: Get Secrets from Vault
+      - name: Get Secrets from Vault
         id: vault-secrets
         uses: hashicorp/vault-action@v2.4.1
         with:
           url: ${{ secrets.VAULT_ADDR }}
           token: ${{ secrets.VAULT_TOKEN }}
           path: ${{ env.SECRET_PATH }}
-          method: token
-          exportEnv: true  # Exports secrets as environment variables
+        continue-on-error: false
 
-      # Step 3: Print retrieved secret keys (SAFE LOGGING)
-      - name: Print retrieved secret keys
+      # Step 3: Verify if Secrets were Retrieved
+      - name: Verify Retrieved Secrets
         run: |
-          echo "Secrets successfully retrieved from Vault!"
-          echo "Available secret keys:"
-          env | grep 'VAULT_' | cut -d= -f1  # Prints only the keys
+          echo "🔍 Checking if secrets were retrieved..."
+          if [ -z "${{ steps.vault-secrets.outputs.secret }}" ]; then
+            echo "❌ Failed to retrieve secrets from Vault."
+            exit 1
+          else
+            echo "✅ Secrets retrieved successfully!"
+          fi
 
-      # Step 4: Create a .env file
-      - name: Create .env file
+      # Step 4: Save Secrets in JSON Format
+      - name: Save Secrets as JSON
         run: |
-          echo "Saving secrets to .env file..."
-          env | grep 'VAULT_' | sed 's/^VAULT_//' > .env
-          echo ".env file created successfully!"
+          echo '${{ steps.vault-secrets.outputs.secret }}' > vault_secrets.json
+          echo "✅ Secrets saved to vault_secrets.json"
 
-      # Step 5: Confirm successful execution
-      - name: Confirm success
-        run: echo "Vault secrets have been successfully retrieved and saved."
+      # Step 5: Format JSON and Extract Secrets into Key=Value
+      - name: Format and Extract Secrets
+        run: |
+          jq -r 'to_entries | .[] | if (.key | test("URL|password|path"; "i")) 
+              then "\(.key)=\"\(.value)\"" 
+              else "\(.key)=\(.value)" 
+              end' vault_secrets.json > github_secrets.txt
+          echo "✅ Secrets formatted successfully."
+
+      # Step 6: Print Extracted Secrets (Masked for Security)
+      - name: Print Extracted Secrets (Safe Logging)
+        run: |
+          echo "🔑 Extracted Secrets:"
+          cat github_secrets.txt | sed 's/=.*$/=********/'
+          echo "✅ Secrets printed (masked for security)."
+
+      # Step 7: Create .env File
+      - name: Create .env File
+        if: github.ref == 'refs/heads/frontend_dev'
+        run: |
+          cp github_secrets.txt .env
+          echo "✅ .env file created successfully."
+
+      # Step 8: Confirm Success
+      - name: Confirm Success
+        run: echo "🎉 Secrets sync completed successfully!"
