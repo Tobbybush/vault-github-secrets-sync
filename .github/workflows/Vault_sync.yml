@@ -22,6 +22,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Verify Vault Token
+        shell: pwsh
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: |
+          & "vault.exe" token lookup -format=json | & "jq.exe" '.data'
+
       # Step 2: Get Secrets from Vault
       - name: Get Secrets from Vault
         id: vault-secrets
@@ -35,19 +43,19 @@ jobs:
       # Step 3: Verify if Secrets were Retrieved
       - name: Verify Retrieved Secrets
         run: |
-          echo "🔍 Checking if secrets were retrieved..."
+          echo "Checking if secrets were retrieved..."
           if [ -z "${{ steps.vault-secrets.outputs.secret }}" ]; then
-            echo "❌ Failed to retrieve secrets from Vault."
+            echo "Failed to retrieve secrets from Vault."
             exit 1
           else
-            echo "✅ Secrets retrieved successfully!"
+            echo "Secrets retrieved successfully!"
           fi
 
       # Step 4: Save Secrets in JSON Format
       - name: Save Secrets as JSON
         run: |
           echo '${{ steps.vault-secrets.outputs.secret }}' > vault_secrets.json
-          echo "✅ Secrets saved to vault_secrets.json"
+          echo "Secrets saved to vault_secrets.json"
 
       # Step 5: Format JSON and Extract Secrets into Key=Value
       - name: Format and Extract Secrets
@@ -56,22 +64,22 @@ jobs:
               then "\(.key)=\"\(.value)\"" 
               else "\(.key)=\(.value)" 
               end' vault_secrets.json > github_secrets.txt
-          echo "✅ Secrets formatted successfully."
+          echo "Secrets formatted successfully."
 
       # Step 6: Print Extracted Secrets (Masked for Security)
       - name: Print Extracted Secrets (Safe Logging)
         run: |
-          echo "🔑 Extracted Secrets:"
+          echo "Extracted Secrets:"
           cat github_secrets.txt | sed 's/=.*$/=********/'
-          echo "✅ Secrets printed (masked for security)."
+          echo "Secrets printed (masked for security)."
 
       # Step 7: Create .env File
       - name: Create .env File
         if: github.ref == 'refs/heads/frontend_dev'
         run: |
           cp github_secrets.txt .env
-          echo "✅ .env file created successfully."
+          echo ".env file created successfully."
 
       # Step 8: Confirm Success
       - name: Confirm Success
-        run: echo "🎉 Secrets sync completed successfully!"
+        run: echo "Secrets sync completed successfully!"
