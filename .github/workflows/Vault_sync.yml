@@ -15,7 +15,7 @@ jobs:
       VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
       GH_PAT: ${{ secrets.GH_PAT }}
       GITHUB_REPO: ${{ github.repository }}
-      SECRET_PATH: "kvV2/Vault-POC/backend/dev"
+      SECRET_PATH: "kvV2/smart-store/frontend/dev"
 
     steps:
       # Step 1: Checkout Repository
