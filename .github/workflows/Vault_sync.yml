@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - dev
-      - stage
   workflow_dispatch: # Allows manual trigger
 
 jobs:
@@ -22,7 +21,6 @@ jobs:
       # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
-        run: echo "✅ Repository checked out successfully."
 
       # Step 2: Get Secrets from Vault
       - name: Get Secrets from Vault
