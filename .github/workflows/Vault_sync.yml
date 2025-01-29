@@ -47,7 +47,7 @@ jobs:
       # - name: Import Secrets
       #   uses: hashicorp/vault-action
       #   with:
-      #     url: https://vault-enterprise.mycompany.com:8200
+      #     url: ${{ secrets.VAULT_ADDR }}
       #     method: token
       #     token: ${{ secrets.VAULT_TOKEN }}
       #     # secret-path: ${{ secrets.VAULT_SECRET_PATH }}
@@ -69,7 +69,7 @@ jobs:
         id: vault-secrets  # Add an ID to reference this step
         uses: hashicorp/vault-action@v2
         with:
-          url: https://vault-enterprise.mycompany.com:8200
+          url: ${{ secrets.VAULT_ADDR }}
           method: token
           token: ${{ secrets.VAULT_TOKEN }}
           secrets: |
