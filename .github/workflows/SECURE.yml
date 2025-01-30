@@ -1,28 +1,8 @@
-Skip to content
-Navigation Menu
-Forlarhh
-vault-github-secrets-sync
-
-Type / to search
-Code
-Issues
-Pull requests
-Actions
-Projects
-Security
-Insights
-Secrets Retrieval 2
-Secrets Retrieval 2 #445
-Jobs
-Run details
-Workflow file for this run
-.github/workflows/SECURE.yml at 55f07b4
-##    - cron: '0 */2 * * *' # Runs every 5 hours
-name: Secrets Retrieval 2
+name: Secrets Retrieval TEST
 
 on:
   schedule:
-    - cron: '0 */5 * * *' # Runs every 5 hours
+    - cron: '0 */20 * * *' # Runs every 5 hours
   workflow_dispatch:
 
 jobs:
@@ -263,11 +243,28 @@ jobs:
             foreach ($property in $SECRET_DATA.PSObject.Properties) {
                 $key = $property.Name
                 $value = $property.Value
-         
-                # Append the key and value to the merged string
-                $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
+              # # Handle value enclosed in single quotes, remove the single quotes
+              #     if ($value.StartsWith("'") -and $value.EndsWith("'")) {
+              #         # Remove the leading and trailing single quotes
+              #         $value = $value.Trim("'")
+              #         Write-Host "Value starts and ends with single quotes, trimming: $value"
+              #     }
+            # Check if the key matches specific patterns (case-insensitive)
+            if ($key -match '^(URL|password|path)$') {
+                # Always quote the value for these keys
+                $value = "`"$value`""
+            } 
+            # elseif ($value -match '[\s"`$&|<>;(){}^]') {
+            #     # Quote the value if it contains spaces or special characters
+            #     $value = "`"$value`""
+            #}
+            
+            # Append the key and value to the merged string
+            $MERGED_SECRETS += "$key=$value`n"  # Using key=value format
             }    
             }
+            # Debugging: Show the merged secrets before saving
+            Write-Host "Merged secrets: $MERGED_SECRETS"
             
             # Remove the trailing newline
             $MERGED_SECRETS = $MERGED_SECRETS.TrimEnd("`n")
@@ -334,4 +331,3 @@ jobs:
                   Write-Host "No changes detected for secret path: $SECRET_PATH"
               }
           }
-Update SHOOT.yml · Forlarhh/vault-github-secrets-sync@55f07b4
