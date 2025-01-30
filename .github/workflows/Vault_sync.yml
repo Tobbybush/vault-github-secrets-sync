@@ -57,6 +57,15 @@ jobs:
               echo "Fetched data from $SECRET_PATH"
           done
 
+
+      - name: List Merged Secrets Files
+        if: |
+           ${{ steps.check_vault.outputs.b_dev_has_changed == 'true' }} 
+        shell: powershell
+        run: |
+            Write-Host "Listing merged secrets files:"
+            Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
+
       # # Step 2: Get Secrets from Vault
       # - name: Get Secrets from Vault
       #   id: vault-secrets
