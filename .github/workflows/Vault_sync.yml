@@ -61,10 +61,10 @@ jobs:
       - name: List Merged Secrets Files
         if: |
            ${{ steps.check_vault.outputs.b_dev_has_changed == 'true' }} 
-        shell: powershell
+        shell: bash
         run: |
-            Write-Host "Listing merged secrets files:"
-            Get-ChildItem -Path . -Filter "merged_secrets_*.txt" | ForEach-Object { Write-Host $_.Name }
+          echo "Listing merged secrets files:"
+          ls -1 merged_secrets_*.txt 2>/dev/null || echo "No matching files found"
 
       # # Step 2: Get Secrets from Vault
       # - name: Get Secrets from Vault
