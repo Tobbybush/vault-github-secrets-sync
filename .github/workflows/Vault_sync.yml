@@ -33,7 +33,29 @@ jobs:
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
         run: |
           vault token lookup -format=json -tls-skip-verify | jq '.data'
-      
+
+      - name: Fetch Secrets from Vault
+        run: |
+          set -e  # Stop script on error
+          
+          # Define the secret paths and output variable names
+          declare -A SECRET_PATHS
+          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="b_dev_has_changed"
+
+          for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
+              echo "Processing Vault path: $SECRET_PATH"
+
+              # Try to fetch secrets from Vault
+              SECRET_DATA_JSON=$(vault kv get -format=json "$SECRET_PATH" | jq -r '.data.data')
+
+              if [[ -z "$SECRET_DATA_JSON" ]]; then
+                  echo "Error: Failed to fetch secrets from Vault at path '$SECRET_PATH'"
+                  exit 1
+              fi
+
+              echo "Fetched data from $SECRET_PATH"
+          done
+          
       # # Step 2: Get Secrets from Vault
       # - name: Get Secrets from Vault
       #   id: vault-secrets
