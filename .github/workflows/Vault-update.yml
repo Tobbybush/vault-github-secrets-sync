@@ -16,7 +16,10 @@ jobs:
         - name: Install Vault
           run: |
             sudo snap install vault
-
+        
+        - name: Set VAULT_ADDR
+          run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
+        
         - name: Fetch secret from Vault
           run: |
             vault login ${{ secrets.VAULT_TOKEN }}
