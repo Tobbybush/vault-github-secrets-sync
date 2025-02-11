@@ -6,8 +6,8 @@ on:
       - dev
   workflow_dispatch: # Allows manual trigger 
  
-    jobs:
-        update-secrets:
+jobs:
+    update-secrets:
         runs-on: ubuntu-latest
         steps:
         - name: Checkout code
@@ -32,12 +32,12 @@ on:
             MY_SECRET: ${{ env.B_DEV_SECRET }}
             PUBLIC_KEY: ${{ steps.get-key.outputs.key }}
             KEY_ID: ${{ steps.get-key.outputs.key_id }}
-            run: |
-                # For example, using a Node script to encrypt:
-                encrypt-secret.js
-                # Assume encrypt-secret.js writes the encrypted value to a file or stdout
-                ENCRYPTED_SECRET=$(cat encrypted.txt)
-            curl -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"encrypted_value\": \"${ENCRYPTED_SECRET}\", \"key_id\": \"${KEY_ID}\"}" \
-            https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/<SECRET_NAME>
+          run: |
+           # For example, using a Node script to encrypt:
+           encrypt-secret.js
+           # Assume encrypt-secret.js writes the encrypted value to a file or stdout
+           ENCRYPTED_SECRET=$(cat encrypted.txt)
+           curl -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/json" \
+                -d '{"encrypted_value": "'"${ENCRYPTED_SECRET}"'", "key_id": "'"${KEY_ID}"'"}' \
+                 https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/B_DEV_SECRET"
