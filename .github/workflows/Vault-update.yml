@@ -25,7 +25,7 @@ jobs:
         
         - name: Fetch secret from Vault
           run: |
-            vault login -tls-skip-verify ${{ secrets.VAULT_TOKEN }}
+            echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
             export MY_SECRET=$(vault kv get -field=value secret/kvV2/Vault-POC/backend/dev)
             echo "MY_SECRET=$MY_SECRET" >> $GITHUB_ENV
 
