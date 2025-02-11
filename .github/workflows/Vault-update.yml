@@ -1,0 +1,43 @@
+name: Vault-update
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch: # Allows manual trigger 
+ 
+    jobs:
+        update-secrets:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout code
+          uses: actions/checkout@v3
+
+        - name: Fetch secret from Vault
+          run: |
+            vault login ${{ secrets.VAULT_TOKEN }}
+            export MY_SECRET=$(vault kv get -field=value secret/kvV2/Vault-POC/backend/dev)
+            echo "MY_SECRET=$MY_SECRET" >> $GITHUB_ENV
+
+        - name: Get GitHub public key for repo secrets
+          id: get-key
+          run: |
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/public-key > public-key.json
+            echo "::set-output name=key::$(jq -r '.key' public-key.json)"
+            echo "::set-output name=key_id::$(jq -r '.key_id' public-key.json)"
+
+        - name: Encrypt and update GitHub secret
+          env:
+            MY_SECRET: ${{ env.B_DEV_SECRET }}
+            PUBLIC_KEY: ${{ steps.get-key.outputs.key }}
+            KEY_ID: ${{ steps.get-key.outputs.key_id }}
+            run: |
+                # For example, using a Node script to encrypt:
+                encrypt-secret.js
+                # Assume encrypt-secret.js writes the encrypted value to a file or stdout
+                ENCRYPTED_SECRET=$(cat encrypted.txt)
+            curl -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"encrypted_value\": \"${ENCRYPTED_SECRET}\", \"key_id\": \"${KEY_ID}\"}" \
+            https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/<SECRET_NAME>
