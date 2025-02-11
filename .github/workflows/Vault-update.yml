@@ -16,9 +16,6 @@ jobs:
         - name: Install Vault
           run: |
             sudo snap install vault
-
-            vault login -tls-skip-verify $VAULT_TOKEN
-
         
         - name: Set VAULT_ADDR
           run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
