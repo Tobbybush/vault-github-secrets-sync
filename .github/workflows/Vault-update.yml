@@ -20,11 +20,23 @@ jobs:
         - name: Set VAULT_ADDR
           run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
         
-        - name: Fetch secret from Vault
+        # - name: Fetch secret from Vault
+        #   run: |
+        #     echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
+        #     export MY_SECRET=$(vault kv get -field=value secret/kvV2/Vault-POC/backend/dev)
+        #     echo "MY_SECRET=$MY_SECRET" >> $GITHUB_ENV
+
+        - name: Fetch and Process Secret from Vault
+          env:
+             VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           run: |
-            echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
-            export MY_SECRET=$(vault kv get -field=value secret/kvV2/Vault-POC/backend/dev)
-            echo "MY_SECRET=$MY_SECRET" >> $GITHUB_ENV
+              # Authenticate with Vault
+              echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
+              
+              # Fetch the secret in JSON format
+              vault kv get -format=json -field=data secret/kvV2/Vault-POC/backend/dev > secret.json
+
+
 
         - name: Get GitHub public key for repo secrets
           id: get-key
