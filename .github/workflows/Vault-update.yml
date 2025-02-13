@@ -5,56 +5,77 @@ on:
     branches:
       - dev
   workflow_dispatch: # Allows manual trigger 
- 
+
 jobs:
-    update-secrets:
-        runs-on: ubuntu-latest
-        steps:
-        - name: Checkout code
-          uses: actions/checkout@v3
-        
-        - name: Install Vault
-          run: |
-            sudo snap install vault
-        
-        - name: Set VAULT_ADDR
-          run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
-        
-        - name: Fetch secret from Vault
-          run: |
-            echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
-            export MY_SECRET=$(vault kv get -field=value secret/kvV2/Vault-POC/backend/dev)
-            echo "MY_SECRET=$B_DEV_SECRET" >> $GITHUB_ENV
+  fetch-secrets:
+    runs-on: ubuntu-latest
 
-        # - name: Fetch and Process Secret from Vault
-        #   env:
-        #      VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-        #   run: |
-        #       # Authenticate with Vault
-        #       echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
-              
-        #       # Fetch the secret in JSON format
-        #       vault kv get -format=json -field=data secret/kvV2/Vault-POC/backend/dev > secret.json
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-        - name: Get GitHub public key for repo secrets
-          id: get-key
-          run: |
-            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/public-key > public-key.json
-            echo "::set-output name=key::$(jq -r '.key' public-key.json)"
-            echo "::set-output name=key_id::$(jq -r '.key_id' public-key.json)"
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y jq curl
+          sudo snap install vault
 
-        - name: Encrypt and update GitHub secret
-          env:
-            MY_SECRET: ${{ env.B_DEV_SECRET }}
-            PUBLIC_KEY: ${{ steps.get-key.outputs.key }}
-            KEY_ID: ${{ steps.get-key.outputs.key_id }}
-          run: |
-           # For example, using a Node script to encrypt:
-           encrypt-secret.js
-           # Assume encrypt-secret.js writes the encrypted value to a file or stdout
-           ENCRYPTED_SECRET=$(cat encrypted.txt)
-           curl -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/json" \
-                -d '{"encrypted_value": "'"${ENCRYPTED_SECRET}"'", "key_id": "'"${KEY_ID}"'"}' \
-                 https://api.github.com/repos/Tobbybush/vault-github-secrets-sync/actions/secrets/B_DEV_SECRET"
+      - name: Authenticate with Vault
+        run: |
+          echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
+
+      - name: Fetch and Merge Secrets from Vault
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        run: |
+          set -e
+          
+          # Define Vault secret paths
+          declare -A SECRET_PATHS
+          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="ENV_DEV"
+
+          # Fetch secrets
+          for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
+            echo "Fetching secrets from: $SECRET_PATH"
+            SECRET_DATA=$(vault kv get -format=json "$SECRET_PATH" | jq -r '.data.data')
+
+            if [[ -z "$SECRET_DATA" ]]; then
+              echo "Error: No data fetched from $SECRET_PATH"
+              exit 1
+            fi
+
+            # Convert JSON to key=value format
+            MERGED_SECRETS=""
+            while IFS="=" read -r key value; do
+              MERGED_SECRETS+="$key=$value"$'\n'
+            done < <(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
+
+            echo "$MERGED_SECRETS" > "merged_secrets_${SECRET_PATH//\//_}.txt"
+            echo "Secrets saved to merged_secrets_${SECRET_PATH//\//_}.txt"
+          done
+
+      - name: List Merged Secrets Files
+        run: ls -l merged_secrets_*.txt
+
+      - name: Check if Vault Secrets Changed
+        id: check_vault
+        run: |
+          # Placeholder logic - adjust based on actual change detection method
+          echo "b_dev_has_changed=true" >> "$GITHUB_ENV"
+
+      - name: Update GitHub Secrets if Changed
+        if: env.b_dev_has_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -e
+          echo "Updating GitHub Secrets..."
+          gh auth status
+          for file in merged_secrets_*.txt; do
+            while IFS="=" read -r key value; do
+              if [[ -n "$key" && -n "$value" ]]; then
+                echo "Setting GitHub Secret: $key"
+                gh secret set "$key" --body "$value"
+              fi
+            done < "$file"
+          done
