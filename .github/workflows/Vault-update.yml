@@ -26,7 +26,7 @@ jobs:
       - name: Authenticate with Vault
         run: |
           set -e
-          vault login -method=token token=${{ secrets.VAULT_TOKEN }} -tls-skip-verify
+          vault login -tls-skip-verify -method=token token=${{ secrets.VAULT_TOKEN }}
         env:
           VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
