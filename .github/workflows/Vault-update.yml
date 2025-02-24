@@ -20,9 +20,16 @@ jobs:
           sudo apt install -y jq curl
           sudo snap install vault
 
+      - name: Set VAULT_ADDR
+        run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
+
       - name: Authenticate with Vault
         run: |
-          echo "${{ secrets.VAULT_TOKEN }}" | vault login -tls-skip-verify -
+          set -e
+          vault login -method=token token=${{ secrets.VAULT_TOKEN }} -tls-skip-verify
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
 
       - name: Fetch and Merge Secrets from Vault
         env:
