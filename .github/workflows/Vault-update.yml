@@ -75,11 +75,8 @@ jobs:
           #   echo "Secrets saved to merged_secrets_${SECRET_PATH//\//_}.txt"
           # done
         
-      # - name: List Merged Secrets Files
-      #   run: ls -l merged_secrets_*.txt
-
-      - name: List SECRET_FILE
-        run: ls -l SECRET_FILE
+      - name: List Merged Secrets Files
+        run: ls -l merged_secrets_*.txt
 
       # - name: Check if Vault Secrets Changed
       #   id: check_vault
