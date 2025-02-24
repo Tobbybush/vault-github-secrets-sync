@@ -75,28 +75,31 @@ jobs:
           #   echo "Secrets saved to merged_secrets_${SECRET_PATH//\//_}.txt"
           # done
         
-      - name: List Merged Secrets Files
-        run: ls -l merged_secrets_*.txt
+      # - name: List Merged Secrets Files
+      #   run: ls -l merged_secrets_*.txt
 
-      - name: Check if Vault Secrets Changed
-        id: check_vault
-        run: |
-          # Placeholder logic - adjust based on actual change detection method
-          echo "b_dev_has_changed=true" >> "$GITHUB_ENV"
+      - name: List SECRET_FILE
+        run: ls -l SECRET_FILE
 
-      - name: Update GitHub Secrets if Changed
-        if: env.b_dev_has_changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          set -e
-          echo "Updating GitHub Secrets..."
-          gh auth status
-          for file in merged_secrets_*.txt; do
-            while IFS="=" read -r key value; do
-              if [[ -n "$key" && -n "$value" ]]; then
-                echo "Setting GitHub Secret: $key"
-                gh secret set "$key" --body "$value"
-              fi
-            done < "$file"
-          done
+      # - name: Check if Vault Secrets Changed
+      #   id: check_vault
+      #   run: |
+      #     # Placeholder logic - adjust based on actual change detection method
+      #     echo "b_dev_has_changed=true" >> "$GITHUB_ENV"
+
+      # - name: Update GitHub Secrets if Changed
+      #   if: env.b_dev_has_changed == 'true'
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GH_PAT }}
+      #   run: |
+      #     set -e
+      #     echo "Updating GitHub Secrets..."
+      #     gh auth status
+      #     for file in merged_secrets_*.txt; do
+      #       while IFS="=" read -r key value; do
+      #         if [[ -n "$key" && -n "$value" ]]; then
+      #           echo "Setting GitHub Secret: $key"
+      #           gh secret set "$key" --body "$value"
+      #         fi
+      #       done < "$file"
+      #     done
