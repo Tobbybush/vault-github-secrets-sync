@@ -43,7 +43,8 @@ jobs:
           
           # Define Vault secret paths
           declare -A SECRET_PATHS
-          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="ENV_DEV"
+          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]
+          # ="ENV_DEV"
 
           # Fetch secrets
           for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
@@ -55,15 +56,15 @@ jobs:
               exit 1
             fi
 
-            # Convert JSON to key=value format
+             Convert JSON to key=value format
             MERGED_SECRETS=$(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
 
-            # Save to file
-              SECRET_FILE="merged_secrets_${SECRET_PATH//\//_}.txt"
-              echo "$MERGED_SECRETS" > "$SECRET_FILE"
-        
-              echo "Secrets saved to $SECRET_FILE"
-            done
+          # Save to file
+            SECRET_FILE="${SECRET_PATH//\//_}.txt"
+            echo "$MERGED_SECRETS" > "$SECRET_FILE"
+            
+            echo "Secrets saved to $SECRET_FILE"
+          done
 
             # # Convert JSON to key=value format
             # MERGED_SECRETS=""
