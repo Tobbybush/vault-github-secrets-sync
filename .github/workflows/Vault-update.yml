@@ -19,7 +19,6 @@ jobs:
           sudo apt update
           sudo apt install -y jq curl
           sudo snap install vault
-
       - name: Set VAULT_ADDR
         run: echo "VAULT_ADDR=${{ secrets.VAULT_ADDR }}" >> $GITHUB_ENV
 
@@ -37,41 +36,33 @@ jobs:
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
         run: |
           set -e
-
           # Skip TLS verification
           export VAULT_SKIP_VERIFY=true
           
           # Define Vault secret paths
           declare -A SECRET_PATHS
-          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]
-          # ="ENV_DEV"
-
+          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="ENV_DEV"
           # Fetch secrets
           for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
             echo "Fetching secrets from: $SECRET_PATH"
             SECRET_DATA=$(vault kv get -format=json "$SECRET_PATH" | jq -r '.data.data' || echo "")
-
             if [[ -z "$SECRET_DATA" || "$SECRET_DATA" == "null" ]]; then
               echo " Error: No data fetched from $SECRET_PATH"
               exit 1
             fi
-
-             Convert JSON to key=value format
+            # Convert JSON to key=value format
             MERGED_SECRETS=$(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
-
-          # Save to file
-            SECRET_FILE="${SECRET_PATH//\//_}.txt"
-            echo "$MERGED_SECRETS" > "$SECRET_FILE"
-            
-            echo "Secrets saved to $SECRET_FILE"
-          done
-
+            # Save to file
+              SECRET_FILE="merged_secrets_${SECRET_PATH//\//_}.txt"
+              echo "$MERGED_SECRETS" > "$SECRET_FILE"
+        
+              echo "Secrets saved to $SECRET_FILE"
+            done
             # # Convert JSON to key=value format
             # MERGED_SECRETS=""
             # while IFS="=" read -r key value; do
             #   MERGED_SECRETS+="$key=$value"$'\n'
             # done < <(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
-
           #   echo "$MERGED_SECRETS" > "merged_secrets_${SECRET_PATH//\//_}.txt"
           #   echo "Secrets saved to merged_secrets_${SECRET_PATH//\//_}.txt"
           # done
