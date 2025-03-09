@@ -122,3 +122,4 @@ jobs:
           # Save the aggregated secrets as a single GitHub secret named ENV_DEV.
           echo "Setting GitHub Secret: ENV_DEV"
           gh secret set ENV_DEV --body "$ALL_SECRETS"
+          
