@@ -42,16 +42,14 @@ jobs:
           # Define Vault secret paths
           declare -A SECRET_PATHS
           SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="ENV_DEV"
-
           # Fetch secrets
           for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
             echo "Fetching secrets from: $SECRET_PATH"
             SECRET_DATA=$(vault kv get -format=json "$SECRET_PATH" | jq -r '.data.data' || echo "")
             if [[ -z "$SECRET_DATA" || "$SECRET_DATA" == "null" ]]; then
               echo " Error: No data fetched from $SECRET_PATH"
-              exit
+              exit 1
             fi
-
             # Convert JSON to key=value format
             MERGED_SECRETS=$(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
             # Save to file
@@ -60,34 +58,67 @@ jobs:
         
               echo "Secrets saved to $SECRET_FILE"
             done
- 
+            # # Convert JSON to key=value format
+            # MERGED_SECRETS=""
+            # while IFS="=" read -r key value; do
+            #   MERGED_SECRETS+="$key=$value"$'\n'
+            # done < <(echo "$SECRET_DATA" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
+          #   echo "$MERGED_SECRETS" > "merged_secrets_${SECRET_PATH//\//_}.txt"
+          #   echo "Secrets saved to merged_secrets_${SECRET_PATH//\//_}.txt"
+          # done
+        
       - name: List Merged Secrets Files
         run: ls -l merged_secrets_*.txt
 
-      # - name: Check if Vault Secrets Changed
-      #   id: check_vault
-      #   run: |
-      #     # Placeholder logic - adjust based on actual change detection method
-      #     echo "b_dev_has_changed=true" >> "$GITHUB_ENV"
+      - name: Check if Vault Secrets Changed
+        id: check_vault
+        run: |
+          # Placeholder logic - adjust based on actual change detection method
+          echo "b_dev_has_changed=true" >> "$GITHUB_ENV"
 
-      - name: Update GitHub Secrets
-        # if: env.b_dev_has_changed == 'true'
+      # - name: Update GitHub Secrets if Changed
+      #   if: env.b_dev_has_changed == 'true'
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GH_PAT }}
+      #   run: |
+      #     set -e
+      #     echo "Updating GitHub Secrets..."
+      #     gh auth status
+      #     for file in merged_secrets_*.txt; do
+      #       while IFS="=" read -r key value; do
+      #         if [[ -n "$key" && -n "$value" ]]; then
+      #           echo "Setting GitHub Secret: $key"
+      #           gh secret set "$key" --body "$value"
+      #         fi
+      #       done < "$file"
+      #     done
+
+
+      - name: Update GitHub Secrets if Changed
+        if: env.b_dev_has_changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -e
-          echo "Updating GitHub Secrets..."
+          echo "Updating GitHub Secret with all merged secrets..."
           gh auth status
-
+          
+          # Initialize an empty string to accumulate the secrets.
+          ALL_SECRETS=""
+          
+          # Loop through each merged secrets file.
           for file in merged_secrets_*.txt; do
             while IFS="=" read -r key value; do
               if [[ -n "$key" && -n "$value" ]]; then
-                echo "Setting GitHub Secret: $key"
-
-                gh secret set B_DEV_SECRET --body "$SECRET_VALUE"
-                # gh secret set "$key" --body "$value"
-
-                echo "GitHub Secret B_DEV_SECRET updated successfully."
-          #     fi
-          #   done < "$file"
-          # done
+                # Append each key-value pair on a new line.
+                ALL_SECRETS+="${key}=${value}"$'\n'
+              fi
+            done < "$file"
+          done
+          
+          echo "Aggregated secrets:"
+          echo "$ALL_SECRETS"
+          
+          # Save the aggregated secrets as a single GitHub secret named ENV_DEV.
+          echo "Setting GitHub Secret: ENV_DEV"
+          gh secret set ENV_DEV --body "$ALL_SECRETS"

@@ -151,6 +151,7 @@ jobs:
           VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
         run: |
           & "vault.exe" token lookup -format=json | & "jq.exe" '.data'
+          
       - name: Check Vault for Changes
         id: check_vault
         shell: powershell
@@ -200,6 +201,7 @@ jobs:
         run: |
           echo "Cache restored. Checking contents of ${{ env.HASH_DIR }}:"
           ls ${{ env.HASH_DIR }}
+
       - name: Fetch and Merge Secrets from Vault
         id: fetch_secrets
         if: |
