@@ -41,8 +41,7 @@ jobs:
           
           # Define Vault secret paths
           declare -A SECRET_PATHS
-          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]
-          # ="ENV_DEV"
+          SECRET_PATHS["kvV2/Vault-POC/backend/dev"]="ENV_DEV"
           
           # Fetch secrets
           for SECRET_PATH in "${!SECRET_PATHS[@]}"; do
